@@ -1,0 +1,679 @@
+{
+  "snapshot_metadata": {
+    "timestamp": "2026-04-02T04:48:27.421727+00:00",
+    "label": "baseline",
+    "node_count": 24,
+    "edge_count": 28
+  },
+  "nodes": [
+    {
+      "id": "internet",
+      "label": "Internet",
+      "type": "internet",
+      "namespace": "external",
+      "risk_level": "entry-point",
+      "metadata": {
+        "description": "External internet traffic entry point",
+        "icon": "globe"
+      }
+    },
+    {
+      "id": "ingress-nginx",
+      "label": "Ingress Controller",
+      "type": "ingress",
+      "namespace": "ingress-nginx",
+      "risk_level": "medium",
+      "metadata": {
+        "description": "NGINX Ingress Controller",
+        "version": "1.9.4",
+        "cves": [
+          "CVE-2024-7646"
+        ],
+        "cvss_scores": [
+          8.8
+        ],
+        "ports": [
+          80,
+          443
+        ],
+        "icon": "network"
+      }
+    },
+    {
+      "id": "tesla-dashboard-pod",
+      "label": "Tesla Dashboard",
+      "type": "pod",
+      "namespace": "monitoring",
+      "risk_level": "critical",
+      "metadata": {
+        "description": "Internet-facing Kubernetes Dashboard \u2014 misconfigured with no authentication",
+        "image": "kubernetesui/dashboard:v2.7.0",
+        "cves": [
+          "CVE-2018-18264",
+          "CVE-2023-49797"
+        ],
+        "cvss_scores": [
+          7.5,
+          8.1
+        ],
+        "ports": [
+          8443
+        ],
+        "labels": {
+          "app": "kubernetes-dashboard",
+          "exposed": "true"
+        },
+        "icon": "monitor"
+      }
+    },
+    {
+      "id": "dashboard-sa",
+      "label": "dashboard-admin-sa",
+      "type": "serviceaccount",
+      "namespace": "monitoring",
+      "risk_level": "critical",
+      "metadata": {
+        "description": "ServiceAccount with cluster-admin privileges mounted to the dashboard pod",
+        "automount_token": true,
+        "icon": "user-check"
+      }
+    },
+    {
+      "id": "cluster-admin-binding",
+      "label": "dashboard-cluster-admin",
+      "type": "rolebinding",
+      "namespace": "cluster-wide",
+      "risk_level": "critical",
+      "metadata": {
+        "description": "ClusterRoleBinding granting cluster-admin to dashboard-admin-sa",
+        "binding_type": "ClusterRoleBinding",
+        "icon": "link"
+      }
+    },
+    {
+      "id": "cluster-admin-role",
+      "label": "cluster-admin",
+      "type": "clusterrole",
+      "namespace": "cluster-wide",
+      "risk_level": "critical",
+      "metadata": {
+        "description": "ClusterRole with full access to all resources: *.* (verbs: *)",
+        "rules": [
+          "*.*:*"
+        ],
+        "icon": "shield-alert"
+      }
+    },
+    {
+      "id": "aws-cred-secret",
+      "label": "aws-credentials",
+      "type": "secret",
+      "namespace": "production",
+      "risk_level": "crown-jewel",
+      "metadata": {
+        "description": "AWS IAM access keys stored as Kubernetes Secret",
+        "secret_type": "Opaque",
+        "keys": [
+          "AWS_ACCESS_KEY_ID",
+          "AWS_SECRET_ACCESS_KEY"
+        ],
+        "icon": "key"
+      }
+    },
+    {
+      "id": "prod-database",
+      "label": "Production PostgreSQL",
+      "type": "database",
+      "namespace": "production",
+      "risk_level": "crown-jewel",
+      "metadata": {
+        "description": "Production PostgreSQL database containing customer PII and financial data",
+        "engine": "PostgreSQL 15.2",
+        "data_classification": "PII + Financial",
+        "records": "2.4M customer records",
+        "icon": "database"
+      }
+    },
+    {
+      "id": "db-credentials-secret",
+      "label": "db-credentials",
+      "type": "secret",
+      "namespace": "production",
+      "risk_level": "crown-jewel",
+      "metadata": {
+        "description": "Database connection string and credentials",
+        "secret_type": "Opaque",
+        "keys": [
+          "DB_HOST",
+          "DB_USER",
+          "DB_PASSWORD",
+          "DB_NAME"
+        ],
+        "icon": "key"
+      }
+    },
+    {
+      "id": "api-server-pod",
+      "label": "API Server Pod",
+      "type": "pod",
+      "namespace": "production",
+      "risk_level": "high",
+      "metadata": {
+        "description": "Main application API server",
+        "image": "company/api-server:3.1.2",
+        "cves": [
+          "CVE-2023-44487"
+        ],
+        "cvss_scores": [
+          7.5
+        ],
+        "ports": [
+          8080
+        ],
+        "labels": {
+          "app": "api-server",
+          "tier": "backend"
+        },
+        "icon": "server"
+      }
+    },
+    {
+      "id": "api-server-sa",
+      "label": "api-server-sa",
+      "type": "serviceaccount",
+      "namespace": "production",
+      "risk_level": "medium",
+      "metadata": {
+        "description": "ServiceAccount for the API server pod",
+        "automount_token": true,
+        "icon": "user"
+      }
+    },
+    {
+      "id": "api-role-binding",
+      "label": "api-server-rb",
+      "type": "rolebinding",
+      "namespace": "production",
+      "risk_level": "medium",
+      "metadata": {
+        "description": "RoleBinding for api-server to access production secrets",
+        "binding_type": "RoleBinding",
+        "icon": "link"
+      }
+    },
+    {
+      "id": "api-role",
+      "label": "api-server-role",
+      "type": "role",
+      "namespace": "production",
+      "risk_level": "medium",
+      "metadata": {
+        "description": "Role granting read access to specific secrets in production namespace",
+        "rules": [
+          "secrets:get,list (production)"
+        ],
+        "icon": "shield"
+      }
+    },
+    {
+      "id": "worker-pod-1",
+      "label": "Worker Pod 1",
+      "type": "pod",
+      "namespace": "production",
+      "risk_level": "low",
+      "metadata": {
+        "description": "Background job worker processing queue messages",
+        "image": "company/worker:2.8.0",
+        "cves": [],
+        "cvss_scores": [],
+        "ports": [
+          9090
+        ],
+        "labels": {
+          "app": "worker",
+          "tier": "backend"
+        },
+        "icon": "cpu"
+      }
+    },
+    {
+      "id": "worker-pod-2",
+      "label": "Worker Pod 2",
+      "type": "pod",
+      "namespace": "production",
+      "risk_level": "low",
+      "metadata": {
+        "description": "Background job worker processing queue messages",
+        "image": "company/worker:2.8.0",
+        "cves": [],
+        "cvss_scores": [],
+        "ports": [
+          9090
+        ],
+        "labels": {
+          "app": "worker",
+          "tier": "backend"
+        },
+        "icon": "cpu"
+      }
+    },
+    {
+      "id": "monitoring-pod",
+      "label": "Prometheus",
+      "type": "pod",
+      "namespace": "monitoring",
+      "risk_level": "medium",
+      "metadata": {
+        "description": "Prometheus monitoring stack",
+        "image": "prom/prometheus:v2.48.0",
+        "cves": [
+          "CVE-2024-6837"
+        ],
+        "cvss_scores": [
+          5.4
+        ],
+        "ports": [
+          9090
+        ],
+        "labels": {
+          "app": "prometheus"
+        },
+        "icon": "activity"
+      }
+    },
+    {
+      "id": "monitoring-sa",
+      "label": "prometheus-sa",
+      "type": "serviceaccount",
+      "namespace": "monitoring",
+      "risk_level": "low",
+      "metadata": {
+        "description": "ServiceAccount for Prometheus with read-only metrics access",
+        "automount_token": true,
+        "icon": "user"
+      }
+    },
+    {
+      "id": "monitoring-role-binding",
+      "label": "prometheus-rb",
+      "type": "rolebinding",
+      "namespace": "monitoring",
+      "risk_level": "low",
+      "metadata": {
+        "description": "ClusterRoleBinding for Prometheus metrics collection",
+        "binding_type": "ClusterRoleBinding",
+        "icon": "link"
+      }
+    },
+    {
+      "id": "monitoring-role",
+      "label": "prometheus-reader",
+      "type": "clusterrole",
+      "namespace": "cluster-wide",
+      "risk_level": "low",
+      "metadata": {
+        "description": "ClusterRole with read-only access to metrics endpoints",
+        "rules": [
+          "pods:get,list,watch",
+          "nodes:get,list,watch",
+          "metrics.k8s.io:get,list"
+        ],
+        "icon": "shield"
+      }
+    },
+    {
+      "id": "etcd-pod",
+      "label": "etcd",
+      "type": "pod",
+      "namespace": "kube-system",
+      "risk_level": "critical",
+      "metadata": {
+        "description": "etcd key-value store \u2014 backbone of the cluster",
+        "image": "registry.k8s.io/etcd:3.5.10",
+        "cves": [
+          "CVE-2023-47108"
+        ],
+        "cvss_scores": [
+          7.5
+        ],
+        "ports": [
+          2379,
+          2380
+        ],
+        "icon": "hard-drive"
+      }
+    },
+    {
+      "id": "kube-apiserver",
+      "label": "kube-apiserver",
+      "type": "pod",
+      "namespace": "kube-system",
+      "risk_level": "critical",
+      "metadata": {
+        "description": "Kubernetes API Server \u2014 control plane component",
+        "image": "registry.k8s.io/kube-apiserver:v1.28.4",
+        "cves": [],
+        "cvss_scores": [],
+        "ports": [
+          6443
+        ],
+        "icon": "server"
+      }
+    },
+    {
+      "id": "configmap-app-config",
+      "label": "app-config",
+      "type": "configmap",
+      "namespace": "production",
+      "risk_level": "low",
+      "metadata": {
+        "description": "Application configuration (non-sensitive)",
+        "keys": [
+          "LOG_LEVEL",
+          "FEATURE_FLAGS",
+          "API_TIMEOUT"
+        ],
+        "icon": "file-text"
+      }
+    },
+    {
+      "id": "network-policy-default",
+      "label": "default-deny",
+      "type": "networkpolicy",
+      "namespace": "production",
+      "risk_level": "info",
+      "metadata": {
+        "description": "Default deny network policy (not enforced on monitoring namespace!)",
+        "enforcement": "partial",
+        "icon": "shield-off"
+      }
+    },
+    {
+      "id": "svc-api-loadbalancer",
+      "label": "api-service (LB)",
+      "type": "service",
+      "namespace": "production",
+      "risk_level": "medium",
+      "metadata": {
+        "description": "LoadBalancer service exposing the API server externally",
+        "service_type": "LoadBalancer",
+        "ports": [
+          443
+        ],
+        "icon": "globe"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "internet",
+      "target": "ingress-nginx",
+      "relationship": "routes_to",
+      "weight": 1.0,
+      "metadata": {
+        "description": "External traffic hits ingress controller",
+        "protocol": "HTTPS"
+      }
+    },
+    {
+      "source": "ingress-nginx",
+      "target": "tesla-dashboard-pod",
+      "relationship": "forwards_to",
+      "weight": 1.5,
+      "metadata": {
+        "description": "Ingress routes /dashboard to Tesla Dashboard pod (no auth!)",
+        "protocol": "HTTPS",
+        "auth": "none"
+      }
+    },
+    {
+      "source": "tesla-dashboard-pod",
+      "target": "dashboard-sa",
+      "relationship": "uses_service_account",
+      "weight": 0.5,
+      "metadata": {
+        "description": "Dashboard pod auto-mounts privileged ServiceAccount token"
+      }
+    },
+    {
+      "source": "dashboard-sa",
+      "target": "cluster-admin-binding",
+      "relationship": "bound_by",
+      "weight": 0.5,
+      "metadata": {
+        "description": "SA is bound to cluster-admin via ClusterRoleBinding"
+      }
+    },
+    {
+      "source": "cluster-admin-binding",
+      "target": "cluster-admin-role",
+      "relationship": "grants",
+      "weight": 0.5,
+      "metadata": {
+        "description": "Binding grants cluster-admin ClusterRole"
+      }
+    },
+    {
+      "source": "cluster-admin-role",
+      "target": "aws-cred-secret",
+      "relationship": "can_access",
+      "weight": 1.0,
+      "metadata": {
+        "description": "cluster-admin can read all secrets including AWS credentials"
+      }
+    },
+    {
+      "source": "cluster-admin-role",
+      "target": "db-credentials-secret",
+      "relationship": "can_access",
+      "weight": 1.0,
+      "metadata": {
+        "description": "cluster-admin can read database credentials"
+      }
+    },
+    {
+      "source": "db-credentials-secret",
+      "target": "prod-database",
+      "relationship": "authenticates_to",
+      "weight": 0.5,
+      "metadata": {
+        "description": "DB credentials used to connect to production database"
+      }
+    },
+    {
+      "source": "aws-cred-secret",
+      "target": "prod-database",
+      "relationship": "provides_access",
+      "weight": 1.5,
+      "metadata": {
+        "description": "AWS credentials can be used to access RDS instance directly"
+      }
+    },
+    {
+      "source": "internet",
+      "target": "svc-api-loadbalancer",
+      "relationship": "routes_to",
+      "weight": 2.0,
+      "metadata": {
+        "description": "External traffic to API LoadBalancer service",
+        "protocol": "HTTPS"
+      }
+    },
+    {
+      "source": "svc-api-loadbalancer",
+      "target": "api-server-pod",
+      "relationship": "forwards_to",
+      "weight": 2.0,
+      "metadata": {
+        "description": "LoadBalancer routes to API server pod",
+        "protocol": "HTTPS",
+        "auth": "JWT"
+      }
+    },
+    {
+      "source": "api-server-pod",
+      "target": "api-server-sa",
+      "relationship": "uses_service_account",
+      "weight": 1.0,
+      "metadata": {
+        "description": "API server pod uses its service account"
+      }
+    },
+    {
+      "source": "api-server-sa",
+      "target": "api-role-binding",
+      "relationship": "bound_by",
+      "weight": 1.0,
+      "metadata": {
+        "description": "SA bound via RoleBinding"
+      }
+    },
+    {
+      "source": "api-role-binding",
+      "target": "api-role",
+      "relationship": "grants",
+      "weight": 1.0,
+      "metadata": {
+        "description": "Binding grants api-server-role"
+      }
+    },
+    {
+      "source": "api-role",
+      "target": "db-credentials-secret",
+      "relationship": "can_access",
+      "weight": 2.0,
+      "metadata": {
+        "description": "Role grants read access to db-credentials secret"
+      }
+    },
+    {
+      "source": "api-server-pod",
+      "target": "prod-database",
+      "relationship": "connects_to",
+      "weight": 1.5,
+      "metadata": {
+        "description": "API server connects to production database",
+        "protocol": "TCP:5432"
+      }
+    },
+    {
+      "source": "api-server-pod",
+      "target": "configmap-app-config",
+      "relationship": "mounts",
+      "weight": 3.0,
+      "metadata": {
+        "description": "API server mounts application config"
+      }
+    },
+    {
+      "source": "api-server-pod",
+      "target": "worker-pod-1",
+      "relationship": "sends_jobs_to",
+      "weight": 2.5,
+      "metadata": {
+        "description": "API server dispatches background jobs",
+        "protocol": "AMQP"
+      }
+    },
+    {
+      "source": "api-server-pod",
+      "target": "worker-pod-2",
+      "relationship": "sends_jobs_to",
+      "weight": 2.5,
+      "metadata": {
+        "description": "API server dispatches background jobs",
+        "protocol": "AMQP"
+      }
+    },
+    {
+      "source": "monitoring-pod",
+      "target": "monitoring-sa",
+      "relationship": "uses_service_account",
+      "weight": 2.0,
+      "metadata": {
+        "description": "Prometheus uses its service account for API discovery"
+      }
+    },
+    {
+      "source": "monitoring-sa",
+      "target": "monitoring-role-binding",
+      "relationship": "bound_by",
+      "weight": 2.0,
+      "metadata": {
+        "description": "SA bound via ClusterRoleBinding"
+      }
+    },
+    {
+      "source": "monitoring-role-binding",
+      "target": "monitoring-role",
+      "relationship": "grants",
+      "weight": 2.0,
+      "metadata": {
+        "description": "Binding grants prometheus-reader ClusterRole"
+      }
+    },
+    {
+      "source": "monitoring-pod",
+      "target": "api-server-pod",
+      "relationship": "scrapes_metrics",
+      "weight": 3.0,
+      "metadata": {
+        "description": "Prometheus scrapes metrics from API server",
+        "protocol": "HTTP:8080/metrics"
+      }
+    },
+    {
+      "source": "monitoring-pod",
+      "target": "worker-pod-1",
+      "relationship": "scrapes_metrics",
+      "weight": 3.0,
+      "metadata": {
+        "description": "Prometheus scrapes metrics from worker",
+        "protocol": "HTTP:9090/metrics"
+      }
+    },
+    {
+      "source": "kube-apiserver",
+      "target": "etcd-pod",
+      "relationship": "reads_writes",
+      "weight": 1.0,
+      "metadata": {
+        "description": "API server reads/writes cluster state to etcd",
+        "protocol": "gRPC:2379"
+      }
+    },
+    {
+      "source": "cluster-admin-role",
+      "target": "kube-apiserver",
+      "relationship": "full_access",
+      "weight": 0.5,
+      "metadata": {
+        "description": "cluster-admin has full access to the Kubernetes API"
+      }
+    },
+    {
+      "source": "tesla-dashboard-pod",
+      "target": "monitoring-pod",
+      "relationship": "network_access",
+      "weight": 2.5,
+      "metadata": {
+        "description": "Dashboard can reach monitoring namespace (no NetworkPolicy!)"
+      }
+    },
+    {
+      "source": "monitoring-pod",
+      "target": "tesla-dashboard-pod",
+      "relationship": "network_access",
+      "weight": 2.5,
+      "metadata": {
+        "description": "Bidirectional access in monitoring namespace"
+      }
+    }
+  ],
+  "metadata": {
+    "cluster_name": "prod-eks-cluster-01",
+    "scan_timestamp": "2026-03-30T12:00:00Z",
+    "scenario": "Tesla Breach Simulation",
+    "description": "An internet-facing Kubernetes dashboard with excessive RBAC permissions leads to credential theft and database compromise."
+  }
+}

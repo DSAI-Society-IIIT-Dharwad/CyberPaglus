@@ -301,8 +301,6 @@ function App() {
 
   return (
     <div className={`min-h-screen flex flex-col ${isDark ? 'bg-[#0a0f1e]' : 'bg-slate-50'}`}>
-      {/* Scan line animation */}
-      {isDark && <div className="scan-line" />}
 
       {/* ─── Header ─────────────────────────── */}
       <header className={`shrink-0 flex items-center justify-between px-5 py-3 border-b z-40
