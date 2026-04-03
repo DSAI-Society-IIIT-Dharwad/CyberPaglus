@@ -44,8 +44,8 @@ export default function ControlPanel({
     ${isDark ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50'}`;
   const labelClass = `text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`;
   const selectClass = `w-full px-3 py-2 rounded-lg text-sm border transition-colors
-    ${isDark 
-      ? 'bg-slate-800 border-slate-700 text-slate-200 focus:border-blue-500' 
+    ${isDark
+      ? 'bg-slate-800 border-slate-700 text-slate-200 focus:border-blue-500'
       : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500'} 
     outline-none focus:ring-1 focus:ring-blue-500/30`;
 
