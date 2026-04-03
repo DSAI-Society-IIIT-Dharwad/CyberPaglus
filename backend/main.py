@@ -151,6 +151,23 @@ async def upload_custom_graph(file: UploadFile = File(...)):
     }
 
 
+@app.post("/api/recalculate-weights")
+def recalculate_weights(include_details: bool = False):
+    """
+    Recalculate all edge weights using the Advanced Weight Scorer.
+    Replaces simple CVSS-based weights with 5-parameter multi-factor analysis.
+    
+    Parameters:
+        include_details: If True, returns detailed breakdown for each edge weight calculation
+    """
+    result = engine.recalculate_edge_weights_advanced(include_details=include_details)
+    return {
+        "status": "success",
+        "recalculation": result,
+        "graph": engine.get_graph_data(),
+    }
+
+
 @app.post("/api/export-pdf")
 async def export_pdf():
     """Generate a professional Kill Chain PDF report using reportlab and return it as a download."""

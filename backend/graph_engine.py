@@ -9,6 +9,8 @@ import networkx as nx
 from pathlib import Path
 from typing import Optional
 
+from advanced_weight_scorer import AdvancedWeightScorer
+
 
 class K8sGraphEngine:
     """
@@ -58,6 +60,63 @@ class K8sGraphEngine:
                 weight=edge.get("weight", 1.0),
                 metadata=edge.get("metadata", {}),
             )
+
+    def recalculate_edge_weights_advanced(self, include_details: bool = False) -> dict:
+        """
+        Recalculate all edge weights using the AdvancedWeightScorer.
+        Replaces simple CVSS-based weights with comprehensive multi-parameter scoring.
+        
+        Args:
+            include_details: If True, include detailed component breakdown for each edge
+            
+        Returns:
+            dict with summary and optionally detailed weight reports
+        """
+        weight_reports = []
+        updated_count = 0
+        
+        for src, tgt, edge_attr in self.graph.edges(data=True):
+            # Get node data
+            source_node = dict(self.graph.nodes[src])
+            target_node = dict(self.graph.nodes[tgt])
+            relationship = edge_attr.get("relationship", "connects_to")
+            
+            # Build graph context for blast radius calculation
+            graph_context = {
+                "outbound_edges": list(self.graph.successors(tgt))
+            }
+            
+            # Calculate new weight
+            new_weight = AdvancedWeightScorer.calculate_edge_weight(
+                source_node, target_node, relationship, graph_context
+            )
+            
+            # Update edge weight in graph
+            self.graph[src][tgt]["weight"] = new_weight
+            updated_count += 1
+            
+            # Store report if requested
+            if include_details:
+                report = AdvancedWeightScorer.generate_weight_report(
+                    source_node, target_node, relationship, graph_context
+                )
+                report["old_weight"] = edge_attr.get("weight", 1.0)
+                report["new_weight"] = new_weight
+                weight_reports.append(report)
+        
+        return {
+            "status": "success",
+            "edges_updated": updated_count,
+            "scoring_method": "AdvancedWeightScorer (5-parameter multi-factor)",
+            "factors": [
+                "Asset Criticality (25%)",
+                "Privilege Escalation (25%)",
+                "Network Reachability (20%)",
+                "RBAC Restrictions (20%)",
+                "Blast Radius (10%)"
+            ],
+            "weight_reports": weight_reports if include_details else []
+        }
 
     def get_graph_data(self) -> dict:
         """Return full graph as nodes + links for frontend consumption."""
