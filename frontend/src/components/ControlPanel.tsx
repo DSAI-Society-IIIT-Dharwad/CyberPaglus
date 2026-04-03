@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Crosshair, Route, RefreshCcw, AlertTriangle, Search, Trash2,
@@ -23,20 +23,38 @@ interface Props {
   pathResult: ShortestPathResult | null;
   loading: boolean;
   isDark: boolean;
+  selectedNode?: GraphNode | null;
 }
 
 export default function ControlPanel({
   nodes, onBlastRadius, onShortestPath, onDetectCycles, onCriticalNode,
   onRemediate, onReset, onUpload, onShowKillChain,
   criticalNodeResult, cycleResult, blastResult, pathResult,
-  loading, isDark,
+  loading, isDark, selectedNode
 }: Props) {
   const [blastSource, setBlastSource] = useState('');
   const [blastHops, setBlastHops] = useState(3);
-  const [pathSource, setPathSource] = useState('internet');
-  const [pathTarget, setPathTarget] = useState('prod-database');
+  const [pathSource, setPathSource] = useState('');
+  const [pathTarget, setPathTarget] = useState('');
   const [expanded, setExpanded] = useState<string | null>('blast');
+  const [pickingFor, setPickingFor] = useState<'blastSource' | 'pathSource' | 'pathTarget' | null>(null);
+  const nodeAtPickStartRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync selected node from canvas to active picker slot
+  useEffect(() => {
+    if (pickingFor && selectedNode) {
+      if (selectedNode.id !== nodeAtPickStartRef.current) {
+        if (pickingFor === 'blastSource') setBlastSource(selectedNode.id);
+        if (pickingFor === 'pathSource') setPathSource(selectedNode.id);
+        if (pickingFor === 'pathTarget') setPathTarget(selectedNode.id);
+        setPickingFor(null);
+        nodeAtPickStartRef.current = null;
+      }
+    } else if (!pickingFor) {
+      nodeAtPickStartRef.current = null;
+    }
+  }, [selectedNode, pickingFor]);
 
   const sectionClass = `rounded-xl border transition-all duration-300 overflow-hidden
     ${isDark ? 'bg-slate-900/50 border-slate-700/50 hover:border-slate-600/50' : 'bg-white border-slate-200 hover:border-slate-300'}`;
@@ -49,7 +67,57 @@ export default function ControlPanel({
       : 'bg-white border-slate-200 text-slate-700 focus:border-blue-500'} 
     outline-none focus:ring-1 focus:ring-blue-500/30`;
 
-  const toggle = (id: string) => setExpanded(prev => prev === id ? null : id);
+  const toggle = (id: string) => {
+    setExpanded(prev => prev === id ? null : id);
+    setPickingFor(null);
+  };
+
+  const renderPicker = (type: 'blastSource' | 'pathSource' | 'pathTarget', currentValue: string, labelText: string) => {
+    const isPicking = pickingFor === type;
+    const nodeLabel = nodes.find(n => n.id === currentValue)?.label || currentValue;
+    
+    return (
+      <div className="mb-3 mt-3">
+        <label className={labelClass + ' mb-2 block'}>{labelText}</label>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              if (isPicking) {
+                setPickingFor(null);
+                nodeAtPickStartRef.current = null;
+              } else {
+                setPickingFor(type);
+                nodeAtPickStartRef.current = selectedNode?.id || null;
+              }
+            }}
+            className={`flex-1 py-2 px-3 rounded-lg text-xs font-medium border border-dashed transition-all text-left truncate
+              ${isPicking 
+                ? 'bg-blue-500/10 border-blue-400 text-blue-500 animate-pulse ring-2 ring-blue-500/20' 
+                : (currentValue 
+                  ? (isDark ? 'bg-slate-800 border-slate-600 text-slate-200' : 'bg-slate-100 border-slate-300 text-slate-700')
+                  : (isDark ? 'bg-slate-900 border-slate-700 text-slate-500 hover:border-slate-500 hover:text-slate-400' : 'bg-white border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-500'))}`}
+          >
+            {isPicking ? '🎯 Click a node on map...' : 
+              (currentValue ? `✅ ${nodeLabel}` : '👉 Select node on map')}
+          </button>
+          
+          {currentValue && (
+            <button 
+              onClick={() => {
+                if (type === 'blastSource') setBlastSource('');
+                if (type === 'pathSource') setPathSource('');
+                if (type === 'pathTarget') setPathTarget('');
+              }}
+              className="p-1.5 hover:bg-red-500/10 text-slate-400 hover:text-red-500 rounded-md transition-colors border border-transparent hover:border-red-500/20"
+              title="Clear selection"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-3 p-4 overflow-y-auto h-full">
@@ -108,15 +176,7 @@ export default function ControlPanel({
               <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                 Find all nodes reachable within N hops from a compromised node.
               </p>
-              <div>
-                <label className={labelClass}>Source Node</label>
-                <select value={blastSource} onChange={e => setBlastSource(e.target.value)} className={selectClass}>
-                  <option value="">Select a node...</option>
-                  {nodes.map(n => (
-                    <option key={n.id} value={n.id}>{n.label} ({n.type})</option>
-                  ))}
-                </select>
-              </div>
+              {renderPicker('blastSource', blastSource, 'Source Node')}
               <div>
                 <label className={labelClass}>Max Hops: {blastHops}</label>
                 <input
@@ -188,22 +248,8 @@ export default function ControlPanel({
               <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                 Find the easiest attack path using CVSS-weighted edges.
               </p>
-              <div>
-                <label className={labelClass}>Source (Attacker Entry)</label>
-                <select value={pathSource} onChange={e => setPathSource(e.target.value)} className={selectClass}>
-                  {nodes.map(n => (
-                    <option key={n.id} value={n.id}>{n.label} ({n.type})</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={labelClass}>Target (Crown Jewel)</label>
-                <select value={pathTarget} onChange={e => setPathTarget(e.target.value)} className={selectClass}>
-                  {nodes.map(n => (
-                    <option key={n.id} value={n.id}>{n.label} ({n.type})</option>
-                  ))}
-                </select>
-              </div>
+              {renderPicker('pathSource', pathSource, 'Source (Attacker Entry)')}
+              {renderPicker('pathTarget', pathTarget, 'Target (Crown Jewel)')}
               <button
                 disabled={!pathSource || !pathTarget || loading}
                 onClick={() => onShortestPath(pathSource, pathTarget)}

@@ -72,6 +72,7 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -83,13 +84,16 @@
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   background: hsl(215 20% 30%);
   border-radius: 3px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(215 20% 40%);
 }
@@ -98,32 +102,50 @@
 .glow-blue {
   box-shadow: 0 0 15px hsl(216 90% 58% / 0.3), 0 0 45px hsl(216 90% 58% / 0.1);
 }
+
 .glow-red {
   box-shadow: 0 0 15px hsl(0 90% 55% / 0.3), 0 0 45px hsl(0 90% 55% / 0.1);
 }
+
 .glow-gold {
   box-shadow: 0 0 15px hsl(45 100% 50% / 0.3), 0 0 45px hsl(45 100% 50% / 0.1);
 }
+
 .glow-green {
   box-shadow: 0 0 15px hsl(145 80% 45% / 0.3), 0 0 45px hsl(145 80% 45% / 0.1);
 }
+
 .glow-cyan {
   box-shadow: 0 0 15px hsl(185 100% 50% / 0.3), 0 0 45px hsl(185 100% 50% / 0.1);
 }
 
 /* ─── Pulse Animation ───────────────────────── */
 @keyframes pulse-glow {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
+
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
 @keyframes scan-line {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100vh); }
+  0% {
+    transform: translateY(-100%);
+  }
+
+  100% {
+    transform: translateY(100vh);
+  }
 }
+
 .scan-line {
   position: fixed;
   top: 0;
@@ -137,17 +159,31 @@
 }
 
 @keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
+
 .animate-fade-in-up {
   animation: fadeInUp 0.5s ease-out forwards;
 }
 
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
+
 .animate-shimmer {
   background: linear-gradient(90deg, transparent 0%, hsl(216 90% 58% / 0.08) 50%, transparent 100%);
   background-size: 200% 100%;
@@ -155,9 +191,17 @@
 }
 
 @keyframes border-pulse {
-  0%, 100% { border-color: hsl(216 90% 58% / 0.3); }
-  50% { border-color: hsl(216 90% 58% / 0.7); }
+
+  0%,
+  100% {
+    border-color: hsl(216 90% 58% / 0.3);
+  }
+
+  50% {
+    border-color: hsl(216 90% 58% / 0.7);
+  }
 }
+
 .animate-border-pulse {
   animation: border-pulse 2s ease-in-out infinite;
 }
@@ -189,9 +233,15 @@
 }
 
 /* ─── Graph Canvas ──────────────────────────── */
+.graph-container {
+  width: 100%;
+  height: 100%;
+}
 .graph-container canvas {
+  display: block;
   border-radius: 0.75rem;
 }
+
 
 /* ─── Kill chain step connector ─────────────── */
 .kill-chain-step::after {
@@ -203,15 +253,24 @@
   height: 1.5rem;
   background: linear-gradient(to bottom, hsl(0 90% 55%), transparent);
 }
+
 .kill-chain-step:last-child::after {
   display: none;
 }
 
 /* ─── Status dot animation ──────────────────── */
 @keyframes dot-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
 }
+
 .status-dot {
   animation: dot-blink 1.5s ease-in-out infinite;
 }
@@ -229,9 +288,15 @@
 
 /* ─── Loading skeleton ──────────────────────── */
 @keyframes skeleton-loading {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
+
 .skeleton {
   background: linear-gradient(90deg, hsl(215 20% 12%) 0%, hsl(215 20% 18%) 50%, hsl(215 20% 12%) 100%);
   background-size: 200% 100%;
@@ -250,7 +315,8 @@
     visibility: hidden;
   }
 
-  .printable-report, .printable-report * {
+  .printable-report,
+  .printable-report * {
     visibility: visible;
   }
 
@@ -265,7 +331,8 @@
     overflow: visible !important;
   }
 
-  .no-print, .no-print * {
+  .no-print,
+  .no-print * {
     display: none !important;
   }
 

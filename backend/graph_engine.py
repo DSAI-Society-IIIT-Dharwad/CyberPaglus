@@ -236,7 +236,21 @@ class K8sGraphEngine:
         e.g., Service-A -> Service-B -> Service-A
         """
         try:
-            cycles = list(nx.simple_cycles(self.graph))
+            try:
+                # Optimized length bounded search (NetworkX 3.2+)
+                cycles = list(nx.simple_cycles(self.graph, length_bound=5))
+            except TypeError:
+                # Polynomial Time SCC Fallback for older NetworkX bounds
+                cycles = []
+                sccs = [c for c in nx.strongly_connected_components(self.graph) if len(c) > 1]
+                for scc in sccs:
+                    subgraph = self.graph.subgraph(scc)
+                    try:
+                        edges = nx.find_cycle(subgraph)
+                        cycle = [u for u, v in edges]
+                        cycles.append(cycle)
+                    except nx.NetworkXNoCycle:
+                        pass
         except Exception:
             cycles = []
 
@@ -292,46 +306,35 @@ class K8sGraphEngine:
                 "critical_node": None,
             }
 
-        # Count baseline paths
-        baseline_paths = 0
-        path_pairs = []
-        for entry in entry_points:
-            for jewel in crown_jewels:
-                paths = list(nx.all_simple_paths(self.graph, entry, jewel, cutoff=15))
-                baseline_paths += len(paths)
-                if paths:
-                    path_pairs.append((entry, jewel, len(paths)))
+        # Optimized Polynomial Time approach to avoid O(V*2^V) path expansion
+        try:
+            centrality_scores = nx.betweenness_centrality_subset(
+                self.graph,
+                sources=entry_points,
+                targets=crown_jewels,
+                weight="weight",
+                normalized=False
+            )
+        except Exception:
+            centrality_scores = nx.betweenness_centrality(self.graph, weight="weight", normalized=False)
 
-        # For each candidate node, calculate impact of removal
-        candidates = [
-            n for n in self.graph.nodes()
-            if n not in entry_points and n not in crown_jewels
-        ]
+        max_paths = sum(centrality_scores.values()) or 1
 
         node_impacts = []
-        for candidate in candidates:
-            temp_graph = self.graph.copy()
-            temp_graph.remove_node(candidate)
-
-            remaining_paths = 0
-            for entry in entry_points:
-                for jewel in crown_jewels:
-                    if entry in temp_graph and jewel in temp_graph:
-                        paths = list(nx.all_simple_paths(temp_graph, entry, jewel, cutoff=15))
-                        remaining_paths += len(paths)
-
-            broken_paths = baseline_paths - remaining_paths
-            impact_pct = (broken_paths / baseline_paths * 100) if baseline_paths > 0 else 0
-
+        for candidate, paths_bridged in centrality_scores.items():
+            if candidate in entry_points or candidate in crown_jewels:
+                continue
+                
             node_data = dict(self.graph.nodes[candidate])
+            impact_pct = (paths_bridged / max_paths) * 100 if max_paths > 0 else 0
+            
             node_impacts.append({
                 "node_id": candidate,
                 "label": node_data.get("label", candidate),
                 "type": node_data.get("type", "unknown"),
                 "namespace": node_data.get("namespace", "unknown"),
                 "risk_level": node_data.get("risk_level", "unknown"),
-                "paths_broken": broken_paths,
-                "paths_remaining": remaining_paths,
+                "paths_broken": int(paths_bridged),
                 "impact_percentage": round(impact_pct, 1),
                 "metadata": node_data.get("metadata", {}),
             })
@@ -340,18 +343,13 @@ class K8sGraphEngine:
 
         critical_node = node_impacts[0] if node_impacts else None
 
-        betweenness = nx.betweenness_centrality(self.graph, weight="weight")
-
         return {
             "critical_node": critical_node,
             "top_5_nodes": node_impacts[:5],
-            "baseline_paths": baseline_paths,
+            "baseline_paths": int(max_paths),
             "entry_points": entry_points,
             "crown_jewels": crown_jewels,
-            "betweenness_centrality": {
-                k: round(v, 4) for k, v in sorted(betweenness.items(), key=lambda x: x[1], reverse=True)[:10]
-            },
-            "recommendation": f"Remove or restrict '{critical_node['label']}' to break {critical_node['paths_broken']}/{baseline_paths} attack paths ({critical_node['impact_percentage']}%)" if critical_node else "No critical node identified",
+            "recommendation": f"Remove or restrict '{critical_node['label']}' to break {critical_node['paths_broken']} bridging attack routes ({critical_node['impact_percentage']}%)" if critical_node else "No critical node identified",
         }
 
     # ──────────────────────────────────────────────

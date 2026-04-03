@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Moon, Sun, AlertTriangle, Activity, Database, Server,
-  Lock, Wifi, WifiOff, Loader2, BarChart3, GitBranch
+  Lock, Wifi, WifiOff, Loader2, BarChart3, GitBranch, Search
 } from 'lucide-react';
 import GraphCanvas from './components/GraphCanvas';
 import SecuritySidebar from './components/SecuritySidebar';
@@ -50,20 +50,6 @@ function App() {
 
   // ── Graph container sizing ───────────────
   const graphContainerRef = useRef<HTMLDivElement>(null);
-  const [graphSize, setGraphSize] = useState({ width: 800, height: 600 });
-
-  useEffect(() => {
-    const updateSize = () => {
-      if (graphContainerRef.current) {
-        const rect = graphContainerRef.current.getBoundingClientRect();
-        setGraphSize({ width: rect.width, height: rect.height });
-      }
-    };
-    updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
-  }, [selectedNode]);
-
   // ── Load Graph ───────────────────────────
   const loadGraph = useCallback(async () => {
     setLoading(true);
@@ -131,7 +117,7 @@ function App() {
           edgeIds.add(`${result.path[i]}->${result.path[i + 1]}`);
         }
         setHighlight({ nodes: nodeIds, edges: edgeIds, path: result.path, mode: 'shortest-path' });
-        flash(`${result.difficulty} attack path found: ${result.hop_count} hops, weight ${result.total_weight}`, 
+        flash(`${result.difficulty} attack path found: ${result.hop_count} hops, weight ${result.total_weight}`,
           result.difficulty === 'TRIVIAL' || result.difficulty === 'EASY' ? 'error' : 'info');
       } else {
         clearHighlight();
@@ -326,30 +312,56 @@ function App() {
         {/* Center - Stats */}
         {graphData && (
           <div className="hidden md:flex items-center gap-6">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-2 py-1 rounded-lg">
               <Server className={`w-3.5 h-3.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
               <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 {graphData.stats.total_nodes} Nodes
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-2 py-1 rounded-lg">
               <GitBranch className={`w-3.5 h-3.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
               <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 {graphData.stats.total_edges} Edges
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <button 
+              onClick={() => {
+                const criticalNodes = new Set(nodes.filter(n => n.risk_level === 'critical').map(n => n.id));
+                setHighlight({
+                  nodes: criticalNodes,
+                  edges: new Set(),
+                  path: [],
+                  mode: 'group-critical'
+                });
+                setSelectedNode(null); // Clear active sidebar to focus on the group
+              }}
+              className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-red-500/10 cursor-pointer transition-colors"
+              title="Highlight all Critical Risk nodes"
+            >
               <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
               <span className="text-xs font-medium text-red-400">
                 {graphData.stats.critical_nodes} Critical
               </span>
-            </div>
-            <div className="flex items-center gap-2">
+            </button>
+            <button 
+              onClick={() => {
+                const jewelNodes = new Set(nodes.filter(n => n.risk_level === 'crown-jewel').map(n => n.id));
+                setHighlight({
+                  nodes: jewelNodes,
+                  edges: new Set(),
+                  path: [],
+                  mode: 'group-crown-jewel'
+                });
+                setSelectedNode(null); // Clear active sidebar to focus on the group
+              }}
+              className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-yellow-500/10 cursor-pointer transition-colors"
+              title="Highlight all Crown Jewel nodes"
+            >
               <Database className="w-3.5 h-3.5 text-yellow-400" />
               <span className="text-xs font-medium text-yellow-400">
                 {graphData.stats.crown_jewels} Crown Jewels
               </span>
-            </div>
+            </button>
           </div>
         )}
 
@@ -392,7 +404,7 @@ function App() {
             className={`absolute top-[60px] left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl shadow-lg text-xs font-medium flex items-center gap-2
               ${statusMessage.type === 'error' ? 'bg-red-500/90 text-white' :
                 statusMessage.type === 'success' ? 'bg-green-500/90 text-white' :
-                'bg-blue-500/90 text-white'}
+                  'bg-blue-500/90 text-white'}
               backdrop-blur-sm`}
           >
             {statusMessage.type === 'error' && <AlertTriangle className="w-3.5 h-3.5" />}
@@ -415,6 +427,37 @@ function App() {
               <span className="font-semibold">🎯 Active Scenario:</span> {graphData.metadata.scenario}
             </div>
           )}
+
+          {/* Node Search Map */}
+          <div className="px-4 mt-4">
+            <div className="relative group">
+              <Search className={`w-4 h-4 absolute left-3 top-2.5 transition-colors ${isDark ? 'text-slate-500 group-focus-within:text-blue-400' : 'text-slate-400 group-focus-within:text-blue-500'}`} />
+              <input
+                type="text"
+                list="node-search-list"
+                placeholder="Search to locate node..."
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (!val) return;
+                  const found = nodes.find(n => n.id === val || n.label === val);
+                  if (found) {
+                    handleNodeClick(found);
+                    setTimeout(() => { e.target.value = ''; }, 100);
+                  }
+                }}
+                className={`w-full pl-9 pr-3 py-2 text-sm rounded-xl border outline-none transition-all
+                  ${isDark 
+                    ? 'bg-slate-800/40 border-slate-700/50 text-slate-200 focus:bg-slate-800/80 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 placeholder:text-slate-500' 
+                    : 'bg-white border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 placeholder:text-slate-400'}`}
+              />
+              <datalist id="node-search-list">
+                {nodes.map(n => (
+                  <option key={n.id} value={n.label || n.id} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
           <div className="flex-1 overflow-y-auto">
             <ControlPanel
               nodes={nodes}
@@ -432,6 +475,7 @@ function App() {
               pathResult={pathResult}
               loading={apiLoading}
               isDark={isDark}
+              selectedNode={selectedNode}
             />
           </div>
         </div>
@@ -467,26 +511,62 @@ function App() {
           <div className={`absolute bottom-3 left-3 z-20 p-3 rounded-xl text-[10px] space-y-1.5
             ${isDark ? 'bg-slate-900/80 border border-slate-700/50' : 'bg-white/80 border border-slate-200'}
             backdrop-blur-sm`}>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-green-500" />
+            <button
+              onClick={() => {
+                const filtered = new Set(nodes.filter(n => n.type === 'internet' || n.risk_level === 'entry-point').map(n => n.id));
+                setHighlight({ nodes: filtered, edges: new Set(), path: [], mode: 'group-entry-point' });
+                setSelectedNode(null);
+              }}
+              className="flex items-center gap-2 w-full hover:bg-slate-500/10 px-2 py-1 -mx-2 rounded transition-colors text-left"
+            >
+              <span className="w-3 h-3 rounded-full bg-green-500 shrink-0" />
               <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Internet / Entry Point</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-red-500" />
+            </button>
+            <button
+              onClick={() => {
+                const filtered = new Set(nodes.filter(n => n.risk_level === 'critical').map(n => n.id));
+                setHighlight({ nodes: filtered, edges: new Set(), path: [], mode: 'group-critical' });
+                setSelectedNode(null);
+              }}
+              className="flex items-center gap-2 w-full hover:bg-slate-500/10 px-2 py-1 -mx-2 rounded transition-colors text-left"
+            >
+              <span className="w-3 h-3 rounded-full bg-red-500 shrink-0" />
               <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Critical Risk</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-yellow-500" />
+            </button>
+            <button
+              onClick={() => {
+                const filtered = new Set(nodes.filter(n => n.risk_level === 'crown-jewel').map(n => n.id));
+                setHighlight({ nodes: filtered, edges: new Set(), path: [], mode: 'group-crown-jewel' });
+                setSelectedNode(null);
+              }}
+              className="flex items-center gap-2 w-full hover:bg-slate-500/10 px-2 py-1 -mx-2 rounded transition-colors text-left"
+            >
+              <span className="w-3 h-3 rounded-full bg-yellow-500 shrink-0" />
               <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Crown Jewel</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-indigo-500" />
+            </button>
+            <button
+              onClick={() => {
+                // Info or medium risks, or typical pods
+                const filtered = new Set(nodes.filter(n => n.risk_level === 'info' || n.risk_level === 'medium' || n.type === 'pod' || n.type === 'service').map(n => n.id));
+                setHighlight({ nodes: filtered, edges: new Set(), path: [], mode: 'group-standard' });
+                setSelectedNode(null);
+              }}
+              className="flex items-center gap-2 w-full hover:bg-slate-500/10 px-2 py-1 -mx-2 rounded transition-colors text-left"
+            >
+              <span className="w-3 h-3 rounded-full bg-indigo-500 shrink-0" />
               <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Standard Entity</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-slate-500" />
+            </button>
+            <button
+              onClick={() => {
+                const filtered = new Set(nodes.filter(n => n.risk_level === 'low').map(n => n.id));
+                setHighlight({ nodes: filtered, edges: new Set(), path: [], mode: 'group-low' });
+                setSelectedNode(null);
+              }}
+              className="flex items-center gap-2 w-full hover:bg-slate-500/10 px-2 py-1 -mx-2 rounded transition-colors text-left"
+            >
+              <span className="w-3 h-3 rounded-full bg-slate-500 shrink-0" />
               <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Low Risk / Utility</span>
-            </div>
+            </button>
           </div>
 
           <GraphCanvas
@@ -494,8 +574,7 @@ function App() {
             links={links}
             highlight={highlight}
             onNodeClick={handleNodeClick}
-            width={graphSize.width}
-            height={graphSize.height}
+            selectedNode={selectedNode}
             isDark={isDark}
           />
 

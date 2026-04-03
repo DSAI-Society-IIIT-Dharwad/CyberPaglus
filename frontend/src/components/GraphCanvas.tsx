@@ -7,8 +7,7 @@ interface Props {
   links: GraphEdge[];
   highlight: HighlightState;
   onNodeClick: (node: GraphNode) => void;
-  width: number;
-  height: number;
+  selectedNode?: GraphNode | null;
   isDark: boolean;
 }
 
@@ -29,13 +28,13 @@ const NODE_COLORS: Record<string, string> = {
 };
 
 const RISK_COLORS: Record<string, string> = {
-  'crown-jewel': '#eab308',
-  'critical': '#ef4444',
-  'high': '#f97316',
-  'medium': '#f59e0b',
-  'low': '#22c55e',
-  'entry-point': '#22c55e',
-  'info': '#64748b',
+  'crown-jewel': '#eab308',   // Yellow (Crown Jewel)
+  'critical': '#ef4444',     // Red (Critical Risk)
+  'high': '#f97316',         // Orange
+  'medium': '#f59e0b',       // Amber
+  'low': '#64748b',          // Slate/Grey (Low Risk / Utility)
+  'entry-point': '#22c55e',  // Green (Internet / Entry Point)
+  'info': '#6366f1',         // Indigo (Standard Entity)
 };
 
 const NODE_ICONS: Record<string, string> = {
@@ -53,7 +52,7 @@ const NODE_ICONS: Record<string, string> = {
   networkpolicy: '🚧',
 };
 
-export default function GraphCanvas({ nodes, links, highlight, onNodeClick, width, height, isDark }: Props) {
+export default function GraphCanvas({ nodes, links, highlight, onNodeClick, selectedNode, isDark }: Props) {
   const fgRef = useRef<ForceGraphMethods | undefined>();
 
   const graphData = useMemo(() => {
@@ -63,11 +62,16 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, widt
     };
   }, [nodes, links]);
 
+  // Tune layout forces
   useEffect(() => {
     const fg = fgRef.current;
     if (fg) {
-      fg.d3Force('charge')?.strength(-300);
-      fg.d3Force('link')?.distance(80);
+      // Increase negative charge so nodes repel each other horizontally
+      fg.d3Force('charge')?.strength(-400);
+      // Let the link distances be flexible
+      fg.d3Force('link')?.distance(60);
+      
+      (fg as any).d3ReheatSimulation?.();
     }
   }, [graphData]);
 
@@ -87,9 +91,9 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, widt
   const getNodeSize = useCallback((node: GraphNode) => {
     const baseSize = node.type === 'internet' ? 10 :
       node.risk_level === 'crown-jewel' ? 9 :
-      node.risk_level === 'critical' ? 8 :
-      node.type === 'pod' ? 7 : 6;
-    
+        node.risk_level === 'critical' ? 8 :
+          node.type === 'pod' ? 7 : 6;
+
     if (highlight.nodes.size > 0 && highlight.nodes.has(node.id)) {
       return baseSize * 1.4;
     }
@@ -106,8 +110,39 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, widt
     const y = node.y ?? 0;
     const isHighlighted = highlight.nodes.size === 0 || highlight.nodes.has(node.id);
     const isOnPath = highlight.path.includes(node.id);
+    const isSelected = selectedNode?.id === node.id;
+    const isGroupGlow = 
+      (highlight.mode === 'group-critical' && node.risk_level === 'critical') || 
+      (highlight.mode === 'group-crown-jewel' && node.risk_level === 'crown-jewel') ||
+      (highlight.mode === 'group-entry-point' && (node.type === 'internet' || node.risk_level === 'entry-point')) ||
+      (highlight.mode === 'group-standard' && (node.risk_level === 'info' || node.risk_level === 'medium' || node.type === 'pod' || node.type === 'service')) ||
+      (highlight.mode === 'group-low' && node.risk_level === 'low');
 
-    // Outer glow for highlighted / critical nodes
+    // Draw native-colored glowing halo for selected node or filtered group
+    if (isSelected || isGroupGlow) {
+      ctx.beginPath();
+      ctx.arc(x, y, size + 6, 0, 2 * Math.PI);
+      
+      // Use standard transparent base mapping matching the node's true color natively!
+      ctx.globalAlpha = isDark ? 0.35 : 0.25;
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+      
+      // Add glowing shadow effect tied to the node's specific color
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 20;
+      
+      // Apply exact border
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      
+      // Reset shadow so it doesn't affect other elements
+      ctx.shadowBlur = 0;
+    }
+
+    // Outer faint glow for generic highlighted nodes
     if (isHighlighted && (node.risk_level === 'critical' || node.risk_level === 'crown-jewel' || isOnPath)) {
       const glowSize = size + 4;
       const gradient = ctx.createRadialGradient(x, y, size * 0.5, x, y, glowSize);
@@ -144,12 +179,12 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, widt
       ctx.font = `${Math.max(11 / globalScale, 3)}px Inter, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillStyle = isHighlighted 
-        ? (isDark ? '#f1f5f9' : '#1e293b') 
+      ctx.fillStyle = isHighlighted
+        ? (isDark ? '#f1f5f9' : '#1e293b')
         : (isDark ? '#475569' : '#94a3b8');
       ctx.fillText(node.label || node.id, x, y + size + 3);
     }
-  }, [getNodeColor, getNodeSize, highlight, isDark]);
+  }, [getNodeColor, getNodeSize, highlight, isDark, selectedNode]);
 
   const getLinkColor = useCallback((link: { source: GraphNode | string; target: GraphNode | string }) => {
     const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
@@ -161,11 +196,12 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, widt
     }
     if (highlight.nodes.size > 0) {
       if (highlight.nodes.has(sourceId) && highlight.nodes.has(targetId)) {
-        return isDark ? 'rgba(99,102,241,0.5)' : 'rgba(99,102,241,0.4)';
+        return isDark ? 'rgba(99,102,241,0.8)' : 'rgba(99,102,241,0.7)';
       }
-      return isDark ? 'rgba(30,41,59,0.3)' : 'rgba(203,213,225,0.3)';
+      return isDark ? 'rgba(15,23,42,0.6)' : 'rgba(203,213,225,0.4)';
     }
-    return isDark ? 'rgba(71,85,105,0.4)' : 'rgba(148,163,184,0.3)';
+    // High contrast professional lines (slate-400 equivalent for dark, slate-600 equivalent for light)
+    return isDark ? 'rgba(148,163,184,0.75)' : 'rgba(71,85,105,0.8)';
   }, [highlight, isDark]);
 
   const getLinkWidth = useCallback((link: { source: GraphNode | string; target: GraphNode | string }) => {
@@ -192,8 +228,6 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, widt
       <ForceGraph2D
         ref={fgRef as any}
         graphData={graphData}
-        width={width}
-        height={height}
         nodeCanvasObject={paintNode as any}
         nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
           const size = getNodeSize(node);
@@ -202,6 +236,9 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, widt
           ctx.fillStyle = color;
           ctx.fill();
         }}
+        dagMode="td"
+        dagLevelDistance={120}
+        d3VelocityDecay={0.3}
         linkColor={getLinkColor as any}
         linkWidth={getLinkWidth as any}
         linkDirectionalArrowLength={4}
@@ -215,7 +252,7 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, widt
         linkDirectionalParticleSpeed={0.006}
         linkDirectionalParticleWidth={3}
         linkDirectionalParticleColor={() => '#ef4444'}
-        linkCurvature={0.1}
+        linkCurvature={0.25}
         onNodeClick={handleNodeClick as any}
         backgroundColor={isDark ? '#0a0f1e' : '#f8fafc'}
         cooldownTicks={100}

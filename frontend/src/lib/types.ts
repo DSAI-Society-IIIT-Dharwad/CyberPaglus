@@ -154,7 +154,7 @@ export interface CriticalNodeInfo {
 }
 
 // ─── UI State ─────────────────────────────────
-export type AnalysisMode = 'none' | 'blast-radius' | 'shortest-path' | 'cycles' | 'critical-node';
+export type AnalysisMode = 'none' | 'blast-radius' | 'shortest-path' | 'cycles' | 'critical-node' | 'group-critical' | 'group-crown-jewel' | 'group-entry-point' | 'group-standard' | 'group-low';
 
 export interface HighlightState {
   nodes: Set<string>;
