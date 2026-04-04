@@ -2,12 +2,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, AlertTriangle, Database, Key, Server, Globe, Link2, User,
   Cpu, Activity, HardDrive, FileText, ShieldOff, ShieldAlert, Network, Monitor,
-  X, Crosshair, Route, ChevronRight
+  X, Crosshair, Route, ChevronRight, Zap
 } from 'lucide-react';
-import type { GraphNode } from '@/lib/types';
+import type { GraphNode, TopCriticalPath } from '@/lib/types';
 
 interface Props {
   node: GraphNode | null;
+  criticalPath: TopCriticalPath | null;
   onClose: () => void;
   onBlastRadius: (nodeId: string) => void;
   onFindPath: (target: string) => void;
@@ -43,7 +44,162 @@ const RISK_BADGE: Record<string, { bg: string; text: string; label: string }> = 
   'info': { bg: 'bg-slate-500/20', text: 'text-slate-400', label: 'ℹ️ Info' },
 };
 
-export default function SecuritySidebar({ node, onClose, onBlastRadius, onFindPath, isDark }: Props) {
+export default function SecuritySidebar({ node, criticalPath, onClose, onBlastRadius, onFindPath, isDark }: Props) {
+  if (!node && !criticalPath) return null;
+
+  // If showing critical path
+  if (criticalPath) {
+    return (
+      <AnimatePresence>
+        <motion.div
+          initial={{ x: 400, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: 400, opacity: 0 }}
+          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+          className={`absolute top-0 right-0 w-[380px] h-full z-30 overflow-y-auto
+            ${isDark 
+              ? 'bg-slate-900/95 border-l border-slate-700/50' 
+              : 'bg-white/95 border-l border-slate-200'}
+            backdrop-blur-xl`}
+        >
+          {/* Header */}
+          <div className={`sticky top-0 z-10 px-5 py-4 border-b backdrop-blur-xl
+            ${isDark ? 'border-slate-700/50 bg-slate-900/90' : 'border-slate-200 bg-white/90'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${isDark ? 'bg-slate-800' : 'bg-slate-100'} glow-red`}>
+                  <Route className="w-5 h-5 text-red-400" />
+                </div>
+                <div>
+                  <h3 className={`font-semibold text-sm ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
+                    Attack Path #{criticalPath.rank}
+                  </h3>
+                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {criticalPath.difficulty} Risk
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="px-5 py-4 space-y-5">
+            {/* Difficulty Badge */}
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              className={`inline-flex px-3 py-1.5 rounded-full text-xs font-medium
+                ${criticalPath.difficulty === 'HARD' ? 'bg-red-500/20 text-red-400' :
+                  criticalPath.difficulty === 'MODERATE' ? 'bg-orange-500/20 text-orange-400' :
+                  'bg-yellow-500/20 text-yellow-400'}`}
+            >
+              📊 {criticalPath.difficulty} Difficulty
+            </motion.div>
+
+            {/* Path Stats */}
+            <div className={`grid grid-cols-2 gap-3 p-3 rounded-xl ${isDark ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+              <div>
+                <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Hop Count</span>
+                <p className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>{criticalPath.hop_count}</p>
+              </div>
+              <div>
+                <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Total Weight</span>
+                <p className={`text-sm font-medium ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>{criticalPath.total_weight.toFixed(2)}</p>
+              </div>
+              <div>
+                <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Vulnerabilities</span>
+                <p className="text-sm font-medium text-red-400">⚠️ {criticalPath.vulnerabilities_found}</p>
+              </div>
+              <div>
+                <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Criticality</span>
+                <p className="text-sm font-medium text-amber-400">🎯 {criticalPath.criticality_score.toFixed(1)}</p>
+              </div>
+            </div>
+
+            {/* Full Description */}
+            <div>
+              <h4 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                Attack Description
+              </h4>
+              <p className={`text-sm leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                {criticalPath.description}
+              </p>
+            </div>
+
+            {/* Attack Path */}
+            <div>
+              <h4 className={`text-xs font-semibold uppercase tracking-wider mb-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                📍 Attack Path ({criticalPath.path.length} nodes)
+              </h4>
+              <div className="space-y-2">
+                {criticalPath.path.map((nodeId, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <div className={`px-2 py-1 rounded text-xs font-mono font-medium
+                      ${idx === 0 ? 'bg-green-500/20 text-green-400' :
+                        idx === criticalPath.path.length - 1 ? 'bg-yellow-500/20 text-yellow-400' :
+                        isDark ? 'bg-slate-800 text-cyan-400' : 'bg-slate-100 text-blue-600'}`}>
+                      {nodeId}
+                    </div>
+                    {idx < criticalPath.path.length - 1 && (
+                      <ChevronRight className={`w-4 h-4 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Risk Factors */}
+            {criticalPath.risk_factors.length > 0 && (
+              <div>
+                <h4 className={`text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                  Risk Factors
+                </h4>
+                <div className="space-y-1">
+                  {criticalPath.risk_factors.map((factor, i) => (
+                    <div key={i} className={`text-xs p-2 rounded ${isDark ? 'bg-red-950/30 text-red-300' : 'bg-red-50 text-red-700'}`}>
+                      • {factor}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Mitigation Suggestions */}
+            {criticalPath.mitigation_suggestions.length > 0 && (
+              <div>
+                <h4 className={`text-xs font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <Zap className="w-3.5 h-3.5 text-green-400" />
+                  Mitigation Suggestions
+                </h4>
+                <div className="space-y-2">
+                  {criticalPath.mitigation_suggestions.map((suggestion, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ x: -20, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      transition={{ delay: i * 0.1 }}
+                      className={`flex gap-2 p-2.5 rounded-lg text-xs ${isDark ? 'bg-green-950/30 border border-green-900/30 text-green-300' : 'bg-green-50 border border-green-200 text-green-700'}`}
+                    >
+                      <span className="font-bold shrink-0">{i + 1}.</span>
+                      <span>{suggestion}</span>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
+  // Original node display logic
   if (!node) return null;
 
   const risk = RISK_BADGE[node.risk_level] || RISK_BADGE.info;

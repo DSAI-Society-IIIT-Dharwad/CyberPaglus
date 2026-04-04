@@ -54,7 +54,7 @@ const NODE_ICONS: Record<string, string> = {
 };
 
 export default function GraphCanvas({ nodes, links, highlight, onNodeClick, width, height, isDark }: Props) {
-  const fgRef = useRef<ForceGraphMethods | undefined>();
+  const fgRef = useRef<ForceGraphMethods | null>(null);
 
   const graphData = useMemo(() => {
     return {

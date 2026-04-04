@@ -131,6 +131,31 @@ export interface CycleDetail {
   description: string;
 }
 
+export interface TopCriticalPath {
+  rank: number;
+  source: string;
+  target: string;
+  path: string[];
+  path_details: PathStep[];
+  total_weight: number;
+  hop_count: number;
+  difficulty: string;
+  description: string;
+  mitigation_suggestions: string[];
+  vulnerabilities_found: number;
+  risk_factors: string[];
+  criticality_score: number;
+}
+
+export interface TopCriticalPathResult {
+  total_paths_found: number;
+  top_critical_paths: TopCriticalPath[];
+  entry_points_count: number;
+  crown_jewels_count: number;
+  summary: string;
+  error?: string;
+}
+
 export interface CriticalNodeResult {
   critical_node: CriticalNodeInfo | null;
   top_5_nodes: CriticalNodeInfo[];
@@ -154,7 +179,7 @@ export interface CriticalNodeInfo {
 }
 
 // ─── UI State ─────────────────────────────────
-export type AnalysisMode = 'none' | 'blast-radius' | 'shortest-path' | 'cycles' | 'critical-node';
+export type AnalysisMode = 'none' | 'blast-radius' | 'shortest-path' | 'cycles' | 'critical-node' | 'top-critical-paths';
 
 export interface HighlightState {
   nodes: Set<string>;

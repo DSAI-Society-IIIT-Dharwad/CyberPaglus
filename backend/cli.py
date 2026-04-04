@@ -268,6 +268,67 @@ def _print_critical_node(result: dict):
     print()
 
 
+def _print_top_critical_paths(result: dict):
+    """Print top critical attack paths with descriptions and mitigation."""
+    if "error" in result:
+        print(f"\n{C.RED}✗ {result['error']}{C.RESET}\n")
+        return
+
+    paths = result.get("top_critical_paths", [])
+    if not paths:
+        print(f"\n{C.YELLOW}⚠ No attack paths found between entry points and crown jewels.{C.RESET}\n")
+        return
+
+    print(f"\n{C.BOLD}🚨 Top Critical Attack Paths{C.RESET}")
+    print(f"{'─' * 70}")
+    print(f"  Found {result['total_paths_found']} total paths, showing top {len(paths)}")
+    print(f"  Entry Points: {result['entry_points_count']} | Crown Jewels: {result['crown_jewels_count']}")
+
+    for path in paths:
+        rank = path["rank"]
+        difficulty = path["difficulty"]
+        total_weight = path["total_weight"]
+
+        # Color code by difficulty
+        if difficulty == "TRIVIAL":
+            color = C.RED
+        elif difficulty == "EASY":
+            color = C.YELLOW
+        elif difficulty == "MODERATE":
+            color = C.BLUE
+        else:
+            color = C.GREEN
+
+        print(f"\n  {C.BOLD}{color}#{rank} Critical Path (Score: {total_weight:.1f} - {difficulty}){C.RESET}")
+        print(f"  {'─' * 50}")
+
+        # Path summary
+        path_nodes = [step.get("label", step["node_id"]) for step in path["path_details"]]
+        print(f"  {C.WHITE}Path:{C.RESET} {' → '.join(path_nodes)}")
+        print(f"  {C.WHITE}Hops:{C.RESET} {path['hop_count']} | {C.WHITE}Risk Factors:{C.RESET} {len(path['risk_factors'])}")
+
+        # Description
+        print(f"\n  {C.CYAN}📋 Description:{C.RESET}")
+        print(f"    {path['description']}")
+
+        # Mitigation suggestions
+        if path["mitigation_suggestions"]:
+            print(f"\n  {C.GREEN}🛡️  Mitigation Suggestions:{C.RESET}")
+            for i, suggestion in enumerate(path["mitigation_suggestions"], 1):
+                print(f"    {i}. {suggestion}")
+
+        # Risk factors
+        if path["risk_factors"]:
+            print(f"\n  {C.YELLOW}⚠️  Key Risk Factors:{C.RESET}")
+            for factor in path["risk_factors"]:
+                print(f"    • {factor}")
+
+        print(f"  {'─' * 50}")
+
+    print(f"\n{C.BOLD}💡 Summary:{C.RESET} Focus on mitigating the highest-ranked paths first.")
+    print(f"   These represent the most exploitable attack chains in your cluster.\n")
+
+
 # ── PDF Report Generation ─────────────────────────────────────
 
 def _generate_pdf(engine: K8sGraphEngine, output_path: str, blast_result=None, path_result=None, cycle_result=None, critical_result=None):
@@ -660,6 +721,18 @@ def cmd_critical_node(args):
         _print_critical_node(result)
 
 
+def cmd_top_critical_paths(args):
+    """Show top critical attack paths with descriptions and mitigation."""
+    engine = _load_engine(args.input)
+    result = engine.get_top_critical_paths(max_paths=args.count)
+
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
+    else:
+        _print_graph_summary(engine)
+        _print_top_critical_paths(result)
+
+
 def cmd_ingest(args):
     """Ingest live cluster state via kubectl."""
     _print_banner()
@@ -790,6 +863,13 @@ Examples:
     p_critical.add_argument("--input", "-i", default="mock-cluster-graph.json", help="Path to cluster graph JSON")
     p_critical.add_argument("--json", action="store_true", help="Output as JSON")
     p_critical.set_defaults(func=cmd_critical_node)
+
+    # ── top-critical-paths ──
+    p_top_paths = subparsers.add_parser("top-critical-paths", help="Show top critical attack paths with descriptions")
+    p_top_paths.add_argument("--input", "-i", default="mock-cluster-graph.json", help="Path to cluster graph JSON")
+    p_top_paths.add_argument("--count", "-n", type=int, default=3, help="Number of top paths to show (default: 3)")
+    p_top_paths.add_argument("--json", action="store_true", help="Output as JSON")
+    p_top_paths.set_defaults(func=cmd_top_critical_paths)
 
     # ── ingest ──
     p_ingest = subparsers.add_parser("ingest", help="Ingest live Kubernetes cluster state via kubectl")

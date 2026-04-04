@@ -5,7 +5,7 @@ import {
   Upload, Zap, RotateCcw, ChevronDown, ChevronUp, Loader2, Shield,
   TrendingUp, Target, Info
 } from 'lucide-react';
-import type { GraphNode, CriticalNodeResult, CycleResult, BlastRadiusResult, ShortestPathResult } from '@/lib/types';
+import type { GraphNode, CriticalNodeResult, TopCriticalPathResult, TopCriticalPath, CycleResult, BlastRadiusResult, ShortestPathResult } from '@/lib/types';
 
 interface Props {
   nodes: GraphNode[];
@@ -13,11 +13,14 @@ interface Props {
   onShortestPath: (source: string, target: string) => Promise<void>;
   onDetectCycles: () => Promise<void>;
   onCriticalNode: () => Promise<void>;
+  onTopCriticalPaths: (count: number) => Promise<void>;
+  onSelectCriticalPath: (path: TopCriticalPath) => void;
   onRemediate: (nodeId: string) => void;
   onReset: () => void;
   onUpload: (file: File) => void;
   onShowKillChain: () => void;
   criticalNodeResult: CriticalNodeResult | null;
+  topCriticalResult: TopCriticalPathResult | null;
   cycleResult: CycleResult | null;
   blastResult: BlastRadiusResult | null;
   pathResult: ShortestPathResult | null;
@@ -27,14 +30,15 @@ interface Props {
 
 export default function ControlPanel({
   nodes, onBlastRadius, onShortestPath, onDetectCycles, onCriticalNode,
-  onRemediate, onReset, onUpload, onShowKillChain,
-  criticalNodeResult, cycleResult, blastResult, pathResult,
+  onTopCriticalPaths, onSelectCriticalPath, onRemediate, onReset, onUpload, onShowKillChain,
+  criticalNodeResult, topCriticalResult, cycleResult, blastResult, pathResult,
   loading, isDark,
 }: Props) {
   const [blastSource, setBlastSource] = useState('');
   const [blastHops, setBlastHops] = useState(3);
   const [pathSource, setPathSource] = useState('internet');
   const [pathTarget, setPathTarget] = useState('prod-database');
+  const [topCount, setTopCount] = useState(3);
   const [expanded, setExpanded] = useState<string | null>('blast');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -314,7 +318,103 @@ export default function ControlPanel({
         </AnimatePresence>
       </div>
 
-      {/* 4. Critical Node */}
+      {/* 4. Top Critical Attack Paths */}
+      <div className={sectionClass}>
+        <button onClick={() => toggle('topCritical')} className={headerClass}>
+          <span className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-red-500" />
+            <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>Top Critical Paths</span>
+          </span>
+          {expanded === 'topCritical' ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+        </button>
+        <AnimatePresence>
+          {expanded === 'topCritical' && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="px-4 pb-4 space-y-3"
+            >
+              <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                Identify and analyze the most critical attack paths with mitigation suggestions.
+              </p>
+              <div>
+                <label className={labelClass}>Number of Paths: {topCount}</label>
+                <input
+                  type="range"
+                  min={1}
+                  max={topCriticalResult?.total_paths_found ?? 10}
+                  value={topCount}
+                  onChange={e => setTopCount(Number(e.target.value))}
+                  className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-slate-700 accent-red-500"
+                />
+                <div className="flex justify-between text-[10px] text-slate-500 mt-0.5">
+                  <span>1</span><span>{Math.ceil((topCriticalResult?.total_paths_found ?? 10) / 2)}</span><span>{topCriticalResult?.total_paths_found ?? 10}</span>
+                </div>
+              </div>
+              <button
+                disabled={loading}
+                onClick={() => onTopCriticalPaths(topCount)}
+                className="w-full py-2.5 rounded-lg text-sm font-medium transition-all
+                  bg-gradient-to-r from-red-600 to-pink-600 text-white
+                  hover:from-red-500 hover:to-pink-500 disabled:opacity-40 disabled:cursor-not-allowed
+                  hover:shadow-lg hover:shadow-red-500/20 active:scale-[0.98]"
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Analyze Critical Paths'}
+              </button>
+              {topCriticalResult && topCriticalResult.top_critical_paths.length > 0 && (
+                <motion.div
+                  initial={{ y: 10, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className={`p-3 rounded-lg border text-xs space-y-2 ${isDark ? 'bg-red-950/30 border-red-900/40' : 'bg-red-50 border-red-200'}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-red-400">🚨 {topCriticalResult.top_critical_paths.length} Critical Path(s)</span>
+                    <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Total: {topCriticalResult.total_paths_found}</span>
+                  </div>
+                  {topCriticalResult.top_critical_paths.map((path, i) => (
+                    <motion.div
+                      key={i}
+                      onClick={() => onSelectCriticalPath(path)}
+                      whileHover={{ scale: 1.02 }}
+                      className={`p-2 rounded text-[10px] space-y-1 cursor-pointer transition-all ${
+                        isDark
+                          ? 'bg-slate-800/50 hover:bg-slate-700/70 border border-slate-700/30 hover:border-red-500/50'
+                          : 'bg-slate-100 hover:bg-slate-200 border border-slate-300/30 hover:border-red-400/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-red-400">#{path.rank}: {path.difficulty}</span>
+                        <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Weight: {path.total_weight}</span>
+                      </div>
+                      <p className={isDark ? 'text-slate-300' : 'text-slate-600'} style={{ wordBreak: 'break-word' }}>
+                        {path.description.substring(0, 120)}...
+                      </p>
+                      {path.mitigation_suggestions.length > 0 && (
+                        <div className={`mt-1 pt-1 border-t ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
+                          <span className={`font-semibold ${isDark ? 'text-green-400' : 'text-green-600'}`}>💡 Mitigation:</span>
+                          <p className={isDark ? 'text-slate-400' : 'text-slate-500'} style={{ wordBreak: 'break-word' }}>
+                            {path.mitigation_suggestions[0]}
+                          </p>
+                        </div>
+                      )}
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
+              {topCriticalResult && topCriticalResult.top_critical_paths.length === 0 && (
+                <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+                  className={`p-3 rounded-lg border text-xs ${isDark ? 'bg-green-950/30 border-green-900/40 text-green-400' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                  ✅ No critical attack paths found from entry points to crown jewels.
+                </motion.div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* 5. Critical Node */}
       <div className={sectionClass}>
         <button onClick={() => toggle('critical')} className={headerClass}>
           <span className="flex items-center gap-2">

@@ -12,6 +12,7 @@ import { api } from './lib/api';
 import type {
   GraphNode, GraphEdge, GraphData, HighlightState,
   BlastRadiusResult, ShortestPathResult, CycleResult, CriticalNodeResult,
+  TopCriticalPathResult, TopCriticalPath,
 } from './lib/types';
 
 function App() {
@@ -37,6 +38,7 @@ function App() {
 
   // ── UI State ─────────────────────────────
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [selectedCriticalPath, setSelectedCriticalPath] = useState<TopCriticalPath | null>(null);
   const [highlight, setHighlight] = useState<HighlightState>({
     nodes: new Set(), edges: new Set(), path: [], mode: 'none',
   });
@@ -47,6 +49,7 @@ function App() {
   const [pathResult, setPathResult] = useState<ShortestPathResult | null>(null);
   const [cycleResult, setCycleResult] = useState<CycleResult | null>(null);
   const [criticalResult, setCriticalResult] = useState<CriticalNodeResult | null>(null);
+  const [topCriticalResult, setTopCriticalResult] = useState<TopCriticalPathResult | null>(null);
 
   // ── Graph container sizing ───────────────
   const graphContainerRef = useRef<HTMLDivElement>(null);
@@ -86,6 +89,21 @@ function App() {
     loadGraph();
   }, [loadGraph]);
 
+  // ── Auto-analyze critical paths on graph load ─
+  useEffect(() => {
+    if (graphData && !topCriticalResult) {
+      // Auto-analyze with a default count to discover total paths
+      (async () => {
+        try {
+          const result = await api.topCriticalPaths(10);
+          setTopCriticalResult(result);
+        } catch (err) {
+          // Silent fail - user can still manually trigger analysis
+        }
+      })();
+    }
+  }, [graphData, topCriticalResult]);
+
   // ── Flash status ─────────────────────────
   const flash = (text: string, type: 'success' | 'error' | 'info') => {
     setStatusMessage({ text, type });
@@ -99,6 +117,8 @@ function App() {
     setPathResult(null);
     setCycleResult(null);
     setCriticalResult(null);
+    setTopCriticalResult(null);
+    setSelectedCriticalPath(null);
   };
 
   // ── Algorithm Handlers ───────────────────
@@ -176,6 +196,7 @@ function App() {
     try {
       const result = await api.criticalNode();
       setCriticalResult(result);
+      setTopCriticalResult(null);
 
       if (result.critical_node) {
         const nodeIds = new Set([result.critical_node.node_id]);
@@ -186,6 +207,49 @@ function App() {
       flash(err.message, 'error');
     }
     setApiLoading(false);
+  };
+
+  const handleTopCriticalPaths = async (count: number) => {
+    setApiLoading(true);
+    try {
+      const result = await api.topCriticalPaths(count);
+      setTopCriticalResult(result);
+      setCriticalResult(null);
+      setBlastResult(null);
+      setPathResult(null);
+      setCycleResult(null);
+
+      if (result?.top_critical_paths?.[0]) {
+        const path = result.top_critical_paths[0].path;
+        const nodeIds = new Set(path);
+        const edgeIds = new Set<string>();
+        for (let i = 0; i < path.length - 1; i++) {
+          edgeIds.add(`${path[i]}->${path[i + 1]}`);
+        }
+        setHighlight({ nodes: nodeIds, edges: edgeIds, path, mode: 'top-critical-paths' });
+        flash(`Top critical path loaded: ${result.top_critical_paths[0].difficulty} (${result.top_critical_paths[0].total_weight} weight)`, 'info');
+      } else {
+        setHighlight({ nodes: new Set(), edges: new Set(), path: [], mode: 'none' });
+        flash('No critical attack paths found', 'success');
+      }
+    } catch (err: any) {
+      flash(err.message, 'error');
+    }
+    setApiLoading(false);
+  };
+
+  const handleSelectCriticalPath = (path: TopCriticalPath) => {
+    setSelectedCriticalPath(path);
+    setSelectedNode(null);
+
+    // Highlight the path on the graph
+    const nodeIds = new Set(path.path);
+    const edgeIds = new Set<string>();
+    for (let i = 0; i < path.path.length - 1; i++) {
+      edgeIds.add(`${path.path[i]}->${path.path[i + 1]}`);
+    }
+    setHighlight({ nodes: nodeIds, edges: edgeIds, path: path.path, mode: 'top-critical-paths' });
+    flash(`Critical path selected: ${path.rank} (${path.difficulty})`, 'info');
   };
 
   const handleRemediate = async (nodeId: string) => {
@@ -231,6 +295,7 @@ function App() {
       setLinks(result.graph.links);
       clearHighlight();
       setSelectedNode(null);
+      setTopCriticalResult(null);
       flash(result.message, 'success');
     } catch (err: any) {
       flash(err.message, 'error');
@@ -422,11 +487,14 @@ function App() {
               onShortestPath={handleShortestPath}
               onDetectCycles={handleDetectCycles}
               onCriticalNode={handleCriticalNode}
+              onTopCriticalPaths={handleTopCriticalPaths}
+              onSelectCriticalPath={handleSelectCriticalPath}
               onRemediate={handleRemediate}
               onReset={handleReset}
               onUpload={handleUpload}
               onShowKillChain={() => setShowKillChain(true)}
               criticalNodeResult={criticalResult}
+              topCriticalResult={topCriticalResult}
               cycleResult={cycleResult}
               blastResult={blastResult}
               pathResult={pathResult}
@@ -502,7 +570,11 @@ function App() {
           {/* Security Sidebar (overlays right side of graph) */}
           <SecuritySidebar
             node={selectedNode}
-            onClose={() => setSelectedNode(null)}
+            criticalPath={selectedCriticalPath}
+            onClose={() => {
+              setSelectedNode(null);
+              setSelectedCriticalPath(null);
+            }}
             onBlastRadius={(nodeId) => handleBlastRadius(nodeId, 3)}
             onFindPath={handleFindPathToNode}
             isDark={isDark}

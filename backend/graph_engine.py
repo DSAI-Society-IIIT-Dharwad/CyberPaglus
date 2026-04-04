@@ -414,6 +414,228 @@ class K8sGraphEngine:
         }
 
     # ──────────────────────────────────────────────
+    # Top Critical Attack Paths Analysis
+    # ──────────────────────────────────────────────
+    def get_top_critical_paths(self, max_paths: int = 3) -> dict:
+        """
+        Find the top critical attack paths from entry points to crown jewels.
+        Returns paths ranked by total attack difficulty (lowest weight = most critical).
+        Includes descriptions and mitigation suggestions for each path.
+        """
+        entry_points = [
+            n for n, d in self.graph.nodes(data=True)
+            if d.get("type") == "internet" or d.get("risk_level") == "entry-point"
+        ]
+        crown_jewels = [
+            n for n, d in self.graph.nodes(data=True)
+            if d.get("risk_level") == "crown-jewel"
+        ]
+
+        if not entry_points:
+            return {"error": "No entry points found in graph"}
+        if not crown_jewels:
+            return {"error": "No crown jewels found in graph"}
+
+        all_paths = []
+
+        # Calculate paths from all entry points to all crown jewels
+        for source in entry_points:
+            for target in crown_jewels:
+                try:
+                    path = nx.dijkstra_path(self.graph, source, target, weight="weight")
+                    total_weight = nx.dijkstra_path_length(self.graph, source, target, weight="weight")
+
+                    path_details = []
+                    vulnerabilities = []
+                    risk_factors = []
+
+                    for i, node_id in enumerate(path):
+                        node_data = dict(self.graph.nodes[node_id])
+                        step = {
+                            "step": i + 1,
+                            "node_id": node_id,
+                            "label": node_data.get("label", node_id),
+                            "type": node_data.get("type", "unknown"),
+                            "risk_level": node_data.get("risk_level", "unknown"),
+                        }
+
+                        # Collect vulnerabilities and risk factors
+                        if node_data.get("metadata", {}).get("cvss_scores"):
+                            vulnerabilities.extend(node_data["metadata"]["cvss_scores"])
+
+                        if node_data.get("risk_level") in ("critical", "crown-jewel"):
+                            risk_factors.append(f"Critical asset: {node_data.get('label', node_id)}")
+
+                        if i < len(path) - 1:
+                            edge_data = self.graph.edges[path[i], path[i + 1]]
+                            step["edge_to_next"] = {
+                                "target": path[i + 1],
+                                "relationship": edge_data.get("relationship", ""),
+                                "weight": edge_data.get("weight", 1.0),
+                            }
+
+                            # Check for dangerous relationships
+                            relationship = edge_data.get("relationship", "")
+                            if "secret" in relationship.lower() or "token" in relationship.lower():
+                                risk_factors.append("Credential access via secrets/tokens")
+                            if "serviceaccount" in relationship.lower():
+                                risk_factors.append("Service account privilege escalation")
+
+                        path_details.append(step)
+
+                    # Generate description and mitigation
+                    description = self._generate_path_description(path_details, total_weight)
+                    mitigation = self._generate_mitigation_suggestions(path_details, risk_factors)
+
+                    difficulty = "TRIVIAL" if total_weight < 3 else "EASY" if total_weight < 6 else "MODERATE" if total_weight < 10 else "HARD"
+
+                    all_paths.append({
+                        "rank": 0,  # Will be set after sorting
+                        "source": source,
+                        "target": target,
+                        "path": [n for n in path],
+                        "path_details": path_details,
+                        "total_weight": round(total_weight, 2),
+                        "hop_count": len(path) - 1,
+                        "difficulty": difficulty,
+                        "description": description,
+                        "mitigation_suggestions": mitigation,
+                        "vulnerabilities_found": len(vulnerabilities),
+                        "risk_factors": risk_factors,
+                        "criticality_score": self._calculate_path_criticality(path_details),
+                    })
+
+                except nx.NetworkXNoPath:
+                    continue
+
+        # Sort by total weight (lowest = most critical) and take top N
+        all_paths.sort(key=lambda x: x["total_weight"])
+        top_paths = all_paths[:max_paths]
+
+        # Update ranks
+        for i, path in enumerate(top_paths, 1):
+            path["rank"] = i
+
+        return {
+            "total_paths_found": len(all_paths),
+            "top_critical_paths": top_paths,
+            "entry_points_count": len(entry_points),
+            "crown_jewels_count": len(crown_jewels),
+            "summary": f"Found {len(all_paths)} attack paths, showing top {len(top_paths)} most critical ones",
+        }
+
+    def _generate_path_description(self, path_details: list, total_weight: float) -> str:
+        """Generate a human-readable description of the attack path."""
+        if not path_details:
+            return "Empty path"
+
+        start_node = path_details[0]
+        end_node = path_details[-1]
+
+        # Build path summary
+        path_summary = []
+        for step in path_details:
+            node_type = step.get("type", "unknown")
+            risk_level = step.get("risk_level", "unknown")
+            label = step.get("label", step["node_id"])
+
+            if risk_level == "entry-point":
+                path_summary.append(f"enters via {label}")
+            elif risk_level == "crown-jewel":
+                path_summary.append(f"reaches {label}")
+            elif node_type == "serviceaccount":
+                path_summary.append(f"escalates through {label}")
+            elif node_type == "secret":
+                path_summary.append(f"accesses {label}")
+            elif node_type == "pod":
+                path_summary.append(f"compromises {label}")
+            else:
+                path_summary.append(f"moves to {label}")
+
+        description = " → ".join(path_summary)
+
+        # Add difficulty assessment
+        if total_weight < 3:
+            difficulty_desc = "highly exploitable"
+        elif total_weight < 6:
+            difficulty_desc = "moderately easy to exploit"
+        elif total_weight < 10:
+            difficulty_desc = "challenging but possible"
+        else:
+            difficulty_desc = "very difficult to exploit"
+
+        return f"Attack path: {description}. This path is {difficulty_desc} (difficulty score: {total_weight:.1f})."
+
+    def _generate_mitigation_suggestions(self, path_details: list, risk_factors: list) -> list:
+        """Generate specific mitigation suggestions for the attack path."""
+        suggestions = []
+
+        # Analyze each step for specific recommendations
+        for step in path_details:
+            node_type = step.get("type", "")
+            risk_level = step.get("risk_level", "")
+            metadata = step.get("metadata", {})
+
+            if node_type == "ingress":
+                suggestions.append("Restrict ingress access with network policies or authentication")
+            elif node_type == "serviceaccount":
+                suggestions.append("Use minimal RBAC permissions for service accounts")
+                if metadata.get("automount_token"):
+                    suggestions.append("Disable automountServiceAccountToken for pods that don't need it")
+            elif node_type == "secret":
+                suggestions.append("Use sealed secrets or external secret management")
+                suggestions.append("Implement secret rotation policies")
+            elif node_type == "pod":
+                suggestions.append("Run pods with non-root user and read-only filesystem")
+                suggestions.append("Use security contexts and pod security standards")
+            elif risk_level == "crown-jewel":
+                suggestions.append(f"Implement strict access controls for {step.get('label', 'critical asset')}")
+
+        # Add general suggestions based on risk factors
+        if any("secret" in rf.lower() for rf in risk_factors):
+            suggestions.append("Audit and minimize secret access across the cluster")
+        if any("serviceaccount" in rf.lower() for rf in risk_factors):
+            suggestions.append("Review and tighten RBAC policies for service accounts")
+        if any("credential" in rf.lower() for rf in risk_factors):
+            suggestions.append("Implement credential rotation and least-privilege access")
+
+        # Add network segmentation suggestions
+        hop_count = len(path_details) - 1
+        if hop_count > 3:
+            suggestions.append("Implement network policies to limit lateral movement")
+        if hop_count > 5:
+            suggestions.append("Consider microsegmentation to break long attack chains")
+
+        # Remove duplicates and limit to top 5
+        unique_suggestions = list(dict.fromkeys(suggestions))
+        return unique_suggestions[:5]
+
+    def _calculate_path_criticality(self, path_details: list) -> float:
+        """Calculate a criticality score for the path (higher = more critical)."""
+        score = 0
+
+        for step in path_details:
+            risk_level = step.get("risk_level", "")
+            if risk_level == "crown-jewel":
+                score += 10
+            elif risk_level == "critical":
+                score += 7
+            elif risk_level == "high":
+                score += 5
+            elif risk_level == "medium":
+                score += 3
+
+            node_type = step.get("type", "")
+            if node_type == "secret":
+                score += 8
+            elif node_type == "serviceaccount":
+                score += 6
+            elif node_type == "database":
+                score += 7
+
+        return score
+
+    # ──────────────────────────────────────────────
     # Remediation
     # ──────────────────────────────────────────────
     def remove_node(self, node_id: str) -> dict:

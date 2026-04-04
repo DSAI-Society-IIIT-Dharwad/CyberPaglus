@@ -101,6 +101,12 @@ def critical_node():
     return engine.critical_node_analysis()
 
 
+@app.get("/api/top-critical-paths")
+def top_critical_paths(max_paths: int = 3):
+    """Get top critical attack paths with descriptions and mitigation suggestions."""
+    return engine.get_top_critical_paths(max_paths=max_paths)
+
+
 @app.post("/api/remediate")
 def remediate(req: RemediateRequest):
     """Remove a node from the graph (simulating remediation)."""

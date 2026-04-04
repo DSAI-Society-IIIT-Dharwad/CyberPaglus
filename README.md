@@ -18,6 +18,7 @@ KubePathAudit models a Kubernetes cluster as a directed graph and applies classi
 │              Graph Engine (graph_engine.py)               │
 │   BFS Blast Radius · Dijkstra Shortest Path              │
 │   DFS Cycle Detection · Critical Node Analysis           │
+│   Top Critical Paths · Attack Descriptions               │
 ├──────────────────────────────────────────────────────────┤
 │  Data Ingestion   │  CVE Scorer   │  Temporal Analysis   │
 │  (ingest.py)      │  (cve_scorer) │  (temporal.py)       │
@@ -46,6 +47,9 @@ pip install -r requirements.txt
 ```bash
 # Full analysis with all 4 algorithms
 python cli.py analyze --input mock-cluster-graph.json
+
+# Show top 3 critical attack paths with mitigation advice
+python cli.py top-critical-paths --input mock-cluster-graph.json
 
 # Generate a PDF Kill Chain Report
 python cli.py analyze --input mock-cluster-graph.json --pdf report.pdf
@@ -120,6 +124,21 @@ python cli.py detect-cycles --input mock-cluster-graph.json
 ```bash
 python cli.py critical-node --input mock-cluster-graph.json
 ```
+
+### `top-critical-paths` — Top Critical Attack Paths
+
+Shows the most exploitable attack paths with detailed descriptions and mitigation suggestions.
+
+```bash
+python cli.py top-critical-paths --input mock-cluster-graph.json
+python cli.py top-critical-paths -i mock-cluster-graph.json --count 5 --json
+```
+
+| Flag | Description |
+|---|---|
+| `--input`, `-i` | Path to cluster graph JSON (default: `mock-cluster-graph.json`) |
+| `--count`, `-n` | Number of top paths to show (default: 3) |
+| `--json` | Output as JSON |
 
 ### `ingest` — Live Cluster Ingestion
 
@@ -272,5 +291,6 @@ kuber attack path visualizer/
 ## License
 
 MIT
-#   k u b e r - a t t a c k - p a t h - p r o j e c t  
+#   k u b e r - a t t a c k - p a t h - p r o j e c t 
+ 
  # kuber-attack-path-project
