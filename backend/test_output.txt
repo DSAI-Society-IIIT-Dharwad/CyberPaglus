@@ -1,0 +1,65 @@
+﻿Nodes: 41, Edges: 48
+
+=== BFS-1: pod-webfront, hops=3 ===
+Total reachable: 15
+  Hop 1: ['default', 'internal-api-svc', 'sa-webapp']
+  Hop 2: ['api-key', 'api-server', 'cluster-admin', 'db-credentials', 'secret-reader', 'tls-cert']
+  Hop 3: ['admin-token', 'analytics-db', 'db-url-config', 'default', 'production-db', 'sa-worker']
+
+=== BFS-2: user-cicd (cicd-bot), hops=2 ===
+Total reachable: 3
+  Hop 1: ['sa-cicd']
+  Hop 2: ['cicd-deploy-token', 'deployer']
+
+=== DIJK-1: user-dev1 -> db-production ===
+Path: dev-1 -> web-frontend -> sa-webapp -> secret-reader -> db-credentials -> production-db
+Cost: 24.1, Hops: 5
+
+=== DIJK-2: internet -> ns-kube-system ===
+Path: internet -> web-frontend -> default -> cluster-admin -> admin-token -> kube-system
+Cost: 32.0, Hops: 5
+
+=== DFS-1: Cycle Detection ===
+Cycles found: 1
+python : Traceback (most 
+recent call last):
+At line:1 char:1
++ python test_rubric.py 
+2>&1 | Out-File -FilePath 
+"test_output.txt" -En ...
++ 
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo        
+      : NotSpecified: (T  
+  raceback (most recent   
+  call last)::String)     
+[], RemoteException
+    + FullyQualifiedError 
+   Id : NativeCommandErr  
+  or
+ 
+  File "C:\Users\akars\One
+Drive\Desktop\kuber 
+attack path visualizer\bac
+kend\test_rubric.py", 
+line 44, in <module>
+    print(f"  
+{c['description']}")
+    ~~~~~^^^^^^^^^^^^^^^^^
+^^^^^^^^
+  File "C:\Users\akars\App
+Data\Local\Programs\Python
+\Python313\Lib\encodings\c
+p1252.py", line 19, in 
+encode
+    return codecs.charmap_
+encode(input,self.errors,e
+ncoding_table)[0]
+           ~~~~~~~~~~~~~~~
+~~~~~~^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+UnicodeEncodeError: 
+'charmap' codec can't 
+encode character '\u2194' 
+in position 12: character 
+maps to <undefined>

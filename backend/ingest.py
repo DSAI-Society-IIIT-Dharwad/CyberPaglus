@@ -1,6 +1,6 @@
 """
 K8s Data Ingestion — Queries a live Kubernetes cluster via kubectl
-and produces a cluster-graph.json file conforming to the KubePathAudit schema.
+and produces a cluster-graph.json file conforming to the KubeInsights schema.
 
 Falls back to mock data if kubectl is not available or no cluster is connected.
 """

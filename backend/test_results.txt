@@ -1,0 +1,58 @@
+Nodes: 41, Edges: 48
+
+=== BFS-1: pod-webfront, hops=3 ===
+Total reachable: 15
+  Hop 1: ['default', 'internal-api-svc', 'sa-webapp']
+  Hop 2: ['api-key', 'api-server', 'cluster-admin', 'db-credentials', 'secret-reader', 'tls-cert']
+  Hop 3: ['admin-token', 'analytics-db', 'db-url-config', 'default', 'production-db', 'sa-worker']
+
+=== BFS-2: user-cicd, hops=2 ===
+Total reachable: 3
+  Hop 1: ['sa-cicd']
+  Hop 2: ['cicd-deploy-token', 'deployer']
+
+=== DIJK-1: user-dev1 -> db-production ===
+Path: dev-1 -> web-frontend -> sa-webapp -> secret-reader -> db-credentials -> production-db
+Cost: 24.1, Hops: 5
+
+=== DIJK-2: internet -> ns-kube-system ===
+Path: internet -> web-frontend -> default -> cluster-admin -> admin-token -> kube-system
+Cost: 32.0, Hops: 5
+
+=== DIJK-3: no-path test ===
+Path exists: False
+Error: No path found from 'svc-service-a' to 'db-analytics'
+
+=== DFS-1: Cycle Detection ===
+Cycles found: 1
+  service-b ↔ service-a ↔ service-b
+
+=== CNA-1: Critical Node ===
+Baseline paths: 46
+Critical: web-frontend (Pod), broken: 32
+Top 5:
+  web-frontend                   (Pod            ) -32 paths
+  api-server                     (Pod            ) -24 paths
+  internal-api-svc               (Service        ) -16 paths
+  sa-worker                      (ServiceAccount ) -14 paths
+  pod-exec                       (Role           ) -14 paths
+
+=== All Attack Paths: 18 ===
+  #1: loadbalancer-svc -> analytics-db | 3 hops | cost=9.5
+  #2: internet -> analytics-db | 4 hops | cost=11.5
+  #3: cicd-bot -> production-db | 3 hops | cost=14.0
+  #4: dev-2 -> worker-node-1 | 4 hops | cost=15.0
+  #5: dev-1 -> analytics-db | 5 hops | cost=15.5
+  #6: dev-1 -> worker-node-1 | 4 hops | cost=17.0
+  #7: loadbalancer-svc -> worker-node-1 | 4 hops | cost=18.5
+  #8: dev-2 -> data-pvc | 5 hops | cost=20.0
+  #9: internet -> worker-node-1 | 5 hops | cost=20.5
+  #10: dev-1 -> data-pvc | 5 hops | cost=22.0
+  #11: loadbalancer-svc -> production-db | 5 hops | cost=22.1
+  #12: internet -> production-db | 5 hops | cost=23.1
+  #13: loadbalancer-svc -> data-pvc | 5 hops | cost=23.5
+  #14: dev-1 -> production-db | 5 hops | cost=24.1
+  #15: internet -> data-pvc | 6 hops | cost=25.5
+  #16: loadbalancer-svc -> kube-system | 5 hops | cost=31.0
+  #17: internet -> kube-system | 5 hops | cost=32.0
+  #18: dev-1 -> kube-system | 5 hops | cost=33.0

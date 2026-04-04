@@ -1,6 +1,6 @@
 """
-Temporal Analysis — Snapshot storage and graph diffing for KubePathAudit.
-Stores timestamped graph snapshots and compares them to detect new attack paths.
+KubeInsights Temporal Analysis — Snapshot storage, retrieval, and comparison.
+Enables diffing graph state over time to detect security regressions.
 """
 
 import json

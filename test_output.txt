@@ -1,0 +1,69 @@
+﻿python : Traceback 
+(most recent call last):
+At line:1 char:1
++ python cli.py analyze 
+--input 
+mock-cluster-graph.json 
+2>&1 | Out-File ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~
+    + CategoryInfo      
+        : NotSpecified: 
+(T    raceback (most 
+recent     call 
+last)::String)     [], 
+RemoteException
+    + 
+FullyQualifiedError    
+Id : NativeCommandErr   
+ or
+ 
+  File "C:\Users\akars\O
+neDrive\Desktop\kuber 
+attack path visualizer\b
+ackend\cli.py", line 
+724, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\akars\O
+neDrive\Desktop\kuber 
+attack path visualizer\b
+ackend\cli.py", line 
+720, in main
+    args.func(args)
+    ~~~~~~~~~^^^^^^
+  File "C:\Users\akars\O
+neDrive\Desktop\kuber 
+attack path visualizer\b
+ackend\cli.py", line 
+457, in cmd_analyze
+    _print_full_report(e
+ngine, hops=args.hops)
+    ~~~~~~~~~~~~~~~~~~^^
+^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\akars\O
+neDrive\Desktop\kuber 
+attack path visualizer\b
+ackend\cli.py", line 
+80, in 
+_print_full_report
+    print(bar)
+    ~~~~~^^^^^
+  File "C:\Users\akars\A
+ppData\Local\Programs\Py
+thon\Python313\Lib\encod
+ings\cp1252.py", line 
+19, in encode
+    return codecs.charma
+p_encode(input,self.erro
+rs,encoding_table)[0]
+           ~~~~~~~~~~~~~
+~~~~~~~~^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 
+'charmap' codec can't 
+encode characters in 
+position 0-65: 
+character maps to 
+<undefined>

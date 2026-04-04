@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """
-KubePathAudit CLI — Command-line security analysis tool for Kubernetes clusters.
+KubeInsights CLI — Command-line security analysis tool for Kubernetes clusters.
 
 Usage:
     python cli.py analyze --input mock-cluster-graph.json
-    python cli.py blast-radius --source internet --hops 3
-    python cli.py shortest-path --source internet --target prod-database
+    python cli.py analyze --input mock-cluster-graph.json --full-report
+    python cli.py blast-radius --source pod-webfront --hops 3
+    python cli.py shortest-path --source user-dev1 --target db-production
     python cli.py detect-cycles
     python cli.py critical-node
     python cli.py ingest -o cluster-graph.json
-    python cli.py analyze --pdf report.pdf
-    python cli.py analyze --diff
     python cli.py snapshots
 """
 
@@ -29,309 +28,292 @@ from temporal import (
 )
 
 
-# ── ANSI Colors ────────────────────────────────────────────────
+# ── Severity helpers ──────────────────────────────────────────
 
-class C:
-    """ANSI color codes for terminal output."""
-    RESET   = "\033[0m"
-    BOLD    = "\033[1m"
-    DIM     = "\033[2m"
-
-    RED     = "\033[91m"
-    GREEN   = "\033[92m"
-    YELLOW  = "\033[93m"
-    BLUE    = "\033[94m"
-    MAGENTA = "\033[95m"
-    CYAN    = "\033[96m"
-    WHITE   = "\033[97m"
-
-    BG_RED    = "\033[41m"
-    BG_YELLOW = "\033[43m"
-    BG_BLUE   = "\033[44m"
-
-    @staticmethod
-    def disable():
-        for attr in dir(C):
-            if attr.isupper() and not attr.startswith("_"):
-                setattr(C, attr, "")
+def _severity_label(risk_score: float) -> str:
+    """Map a cumulative risk score to a severity label."""
+    if risk_score >= 20.0:
+        return "CRITICAL"
+    elif risk_score >= 10.0:
+        return "HIGH"
+    elif risk_score >= 5.0:
+        return "MEDIUM"
+    else:
+        return "LOW"
 
 
 # ── Helpers ────────────────────────────────────────────────────
-
-def _severity_color(severity: str) -> str:
-    colors = {
-        "CRITICAL": C.RED + C.BOLD,
-        "HIGH": C.RED,
-        "MEDIUM": C.YELLOW,
-        "LOW": C.GREEN,
-        "NONE": C.GREEN,
-        "TRIVIAL": C.RED + C.BOLD,
-        "EASY": C.RED,
-        "MODERATE": C.YELLOW,
-        "HARD": C.GREEN,
-    }
-    return colors.get(severity.upper(), C.WHITE)
-
-
-def _risk_color(risk: str) -> str:
-    colors = {
-        "crown-jewel": C.YELLOW + C.BOLD,
-        "critical": C.RED + C.BOLD,
-        "high": C.RED,
-        "medium": C.YELLOW,
-        "low": C.GREEN,
-        "entry-point": C.CYAN,
-        "info": C.DIM,
-    }
-    return colors.get(risk, C.WHITE)
-
 
 def _load_engine(input_path: str) -> K8sGraphEngine:
     """Load the graph engine from a JSON file."""
     path = Path(input_path)
     if not path.exists():
-        print(f"{C.RED}✗ File not found: {input_path}{C.RESET}")
+        print(f"Error: File not found: {input_path}", file=sys.stderr)
         sys.exit(1)
     engine = K8sGraphEngine(str(path))
     return engine
 
 
-def _print_banner():
-    print(f"""
-{C.CYAN}{C.BOLD}╔══════════════════════════════════════════════════════════════╗
-║                                                              ║
-║   ██╗  ██╗██╗   ██╗██████╗ ███████╗██████╗  █████╗ ████████╗║
-║   ██║ ██╔╝██║   ██║██╔══██╗██╔════╝██╔══██╗██╔══██╗╚══██╔══╝║
-║   █████╔╝ ██║   ██║██████╔╝█████╗  ██████╔╝███████║   ██║   ║
-║   ██╔═██╗ ██║   ██║██╔══██╗██╔══╝  ██╔═══╝ ██╔══██║   ██║   ║
-║   ██║  ██╗╚██████╔╝██████╔╝███████╗██║     ██║  ██║   ██║   ║
-║   ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝     ╚═╝  ╚═╝   ╚═╝   ║
-║                                                              ║
-║         {C.WHITE}K u b e P a t h A u d i t   C L I   v1.0{C.CYAN}            ║
-║     {C.DIM}Graph-Based Security Analysis for Cloud-Native Infra{C.CYAN}     ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝{C.RESET}
-""")
+# ── Full Report Formatting (matches sample-output.txt) ────────
 
+def _print_full_report(engine: K8sGraphEngine, hops: int = 3):
+    """
+    Print the full Kill Chain Report in the exact format
+    specified by the hackathon sample-output.txt.
 
-# ── Report Formatting ─────────────────────────────────────────
+    Sections:
+        1. Attack Path Detection (Dijkstra) — all source→sink shortest paths
+        2. Blast Radius Analysis (BFS) — per-source, grouped by hop
+        3. Circular Permission Detection (DFS)
+        4. Critical Node Analysis — removal-and-recount
+        5. Summary
+    """
+    meta = engine.raw_data.get("metadata", {})
+    cluster_name = meta.get("cluster", meta.get("cluster_name", "unknown"))
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    n_nodes = engine.graph.number_of_nodes()
+    n_edges = engine.graph.number_of_edges()
 
-def _print_graph_summary(engine: K8sGraphEngine):
-    """Print a summary of the loaded graph."""
-    data = engine.get_graph_data()
-    stats = data["stats"]
-    meta = data.get("metadata", {})
+    bar = "\u2550" * 66  # ═
 
-    print(f"\n{C.BOLD}📊 Graph Summary{C.RESET}")
-    print(f"{'─' * 50}")
-    if meta.get("cluster_name"):
-        print(f"  Cluster:      {C.CYAN}{meta['cluster_name']}{C.RESET}")
-    if meta.get("scenario"):
-        print(f"  Scenario:     {C.YELLOW}{meta['scenario']}{C.RESET}")
-    print(f"  Total Nodes:  {C.WHITE}{stats['total_nodes']}{C.RESET}")
-    print(f"  Total Edges:  {C.WHITE}{stats['total_edges']}{C.RESET}")
-    print(f"  Crown Jewels: {C.YELLOW}{stats['crown_jewels']}{C.RESET}")
-    print(f"  Critical:     {C.RED}{stats['critical_nodes']}{C.RESET}")
+    # ── Header ────────────────────────────────────────────────
+    print(bar)
+    print(f"  KILL CHAIN REPORT  \u2014  {now}")
+    print(f"  Cluster : {cluster_name}")
+    print(f"  Nodes   : {n_nodes}  |  Edges: {n_edges}")
+    print(bar)
+    print()
+
+    # ══════════════════════════════════════════════════════════
+    # SECTION 1 — ATTACK PATH DETECTION (Dijkstra)
+    # ══════════════════════════════════════════════════════════
+    all_paths = engine.find_all_attack_paths()
+
+    print("[ SECTION 1 \u2014 ATTACK PATH DETECTION (Dijkstra) ]")
+    print(f"  \u26a0  {len(all_paths)} attack path(s) detected")
+    print()
+
+    for idx, ap in enumerate(all_paths, 1):
+        severity = _severity_label(ap["cost"])
+        print(f"  Path #{idx}  |  {ap['hops']} hops  |  Risk Score: {ap['cost']}  [{severity}]")
+        print(f"  {'─' * 60}")
+
+        for edge in ap["path_edges"]:
+            src_name = edge["source_name"]
+            src_type = edge["source_type"]
+            tgt_name = edge["target_name"]
+            tgt_type = edge["target_type"]
+            rel = edge["relationship"]
+            cve = edge.get("cve")
+            cvss = edge.get("cvss")
+
+            line = f"  {src_name} ({src_type})  --[{rel}]-->  {tgt_name} ({tgt_type})"
+            if cve:
+                line += f"  [{cve}, CVSS {cvss}]"
+            print(line)
+
+        print()
+
+    # ══════════════════════════════════════════════════════════
+    # SECTION 2 — BLAST RADIUS ANALYSIS (BFS)
+    # ══════════════════════════════════════════════════════════
+    print(f"[ SECTION 2 \u2014 BLAST RADIUS ANALYSIS (BFS, depth={hops}) ]")
+    print()
+
+    sources = engine._get_sources()
+    total_blast_nodes = 0
+
+    for src in sources:
+        result = engine.bfs_blast_radius(src, hops)
+        label = result.get("source_label", src)
+        total = result["total_affected"]
+        total_blast_nodes += total
+
+        print(f"  Source: {label}  \u2192  {total} reachable resource(s) within {hops} hops")
+
+        layers = result.get("hop_layers", {})
+        for hop_num in sorted(layers.keys()):
+            names = [n.get("label", n["id"]) for n in layers[hop_num]]
+            print(f"    Hop {hop_num}: {', '.join(names)}")
+
+        print()
+
+    # ══════════════════════════════════════════════════════════
+    # SECTION 3 — CIRCULAR PERMISSION DETECTION (DFS)
+    # ══════════════════════════════════════════════════════════
+    cycle_result = engine.dfs_cycle_detection()
+
+    print("[ SECTION 3 \u2014 CIRCULAR PERMISSION DETECTION (DFS) ]")
+    if cycle_result["has_cycles"]:
+        print(f"  \u26a0  {cycle_result['total_cycles']} cycle(s) detected")
+        print()
+        for i, cycle in enumerate(cycle_result["cycles"], 1):
+            print(f"  Cycle #{i}: {cycle['description']}")
+    else:
+        print("  \u2713 No circular permission loops detected.")
+    print()
+
+    # ══════════════════════════════════════════════════════════
+    # SECTION 4 — CRITICAL NODE ANALYSIS
+    # ══════════════════════════════════════════════════════════
+    print("[ SECTION 4 \u2014 CRITICAL NODE ANALYSIS ]")
+    print("  Computing... (removing each node and recounting paths)")
+    print()
+
+    critical_result = engine.critical_node_analysis()
+    baseline = critical_result.get("baseline_paths", 0)
+    print(f"  Baseline attack paths : {baseline}")
+    print()
+
+    cn = critical_result.get("critical_node")
+    if cn:
+        print(f"  \u2605  RECOMMENDATION:")
+        print(f"     Remove permission binding '{cn['label']}' ({cn['type']}) "
+              f"to eliminate {cn['paths_broken']} of {baseline} attack paths.")
+        print()
+
+        top5 = critical_result.get("top_5_nodes", [])
+        if top5:
+            max_broken = top5[0]["paths_broken"] if top5 else 1
+            print("  Top 5 highest-impact nodes to remove:")
+            for node in top5:
+                name_padded = f"{node['label']:<30}"
+                type_padded = f"({node['type']:<15})"
+                bar_len = int(node["paths_broken"] / max_broken * 20) if max_broken > 0 else 0
+                bar_str = "\u2588" * bar_len
+                print(f"    {name_padded} {type_padded}  -{node['paths_broken']} paths  {bar_str}")
+        print()
+
+    # ══════════════════════════════════════════════════════════
+    # SUMMARY
+    # ══════════════════════════════════════════════════════════
+    critical_label = cn["label"] if cn else "none"
+    print(bar)
+    print("  SUMMARY")
+    print(f"  Attack paths found   : {len(all_paths)}")
+    print(f"  Circular permissions : {cycle_result['total_cycles']}")
+    print(f"  Total blast-radius nodes exposed : {total_blast_nodes}")
+    print(f"  Critical node to remove : {critical_label}")
+    print(bar)
     print()
 
 
-def _print_blast_radius(result: dict):
-    """Print blast radius results."""
+# ── Individual Algorithm Output ──────────────────────────────
+
+def _print_blast_radius(engine: K8sGraphEngine, result: dict):
+    """Print blast radius results for a single source."""
     if "error" in result and not result.get("affected_nodes"):
-        print(f"\n{C.RED}✗ {result['error']}{C.RESET}")
+        print(f"\nError: {result['error']}")
         return
 
-    risk = result["risk_summary"]
-    color = _severity_color(risk)
+    label = result.get("source_label", result["source"])
+    total = result["total_affected"]
+    hops = result["max_hops"]
 
-    print(f"\n{C.BOLD}💥 Blast Radius Analysis{C.RESET}")
+    print(f"\nBlast Radius Analysis")
     print(f"{'─' * 50}")
-    print(f"  Source:          {C.CYAN}{result['source']}{C.RESET}")
-    print(f"  Max Hops:        {result['max_hops']}")
-    print(f"  Nodes Affected:  {C.WHITE}{C.BOLD}{result['total_affected']}{C.RESET}")
-    print(f"  Risk Level:      {color}{risk}{C.RESET}")
-    if result.get("crown_jewels_reached"):
-        print(f"  {C.RED}{C.BOLD}⚠ Crown Jewels Reached: {result['crown_jewels_reached']}{C.RESET}")
-        for name in result.get("crown_jewel_names", []):
-            print(f"    • {C.YELLOW}{name}{C.RESET}")
+    print(f"  Source: {label}  →  {total} reachable resource(s) within {hops} hops")
 
-    print(f"\n  {C.DIM}Affected Nodes (Danger Zone):{C.RESET}")
-    for node in sorted(result["affected_nodes"], key=lambda n: n["hop_distance"]):
-        rc = _risk_color(node.get("risk_level", "low"))
-        hop_bar = "█" * (node["hop_distance"] + 1)
-        print(f"    {C.DIM}Hop {node['hop_distance']}:{C.RESET} {hop_bar} "
-              f"{rc}{node.get('label', node['id'])}{C.RESET} "
-              f"[{node.get('type', '?')}] "
-              f"({node.get('risk_level', '?')})")
+    layers = result.get("hop_layers", {})
+    for hop_num in sorted(layers.keys()):
+        names = [n.get("label", n["id"]) for n in layers[hop_num]]
+        print(f"    Hop {hop_num}: {', '.join(names)}")
     print()
 
 
 def _print_shortest_path(result: dict):
     """Print shortest path / kill chain results."""
-    if "error" in result:
-        if not result.get("path_exists", True):
-            print(f"\n{C.GREEN}✓ No attack path exists from '{result.get('source', '?')}' "
-                  f"to '{result.get('target', '?')}'{C.RESET}\n")
-        else:
-            print(f"\n{C.RED}✗ {result['error']}{C.RESET}")
+    if result.get("path_exists") is False:
+        src = result.get('source', '?')
+        tgt = result.get('target', '?')
+        print(f"\nNo path found from '{src}' to '{tgt}'")
         return
 
-    diff = result["difficulty"]
-    color = _severity_color(diff)
+    if "error" in result:
+        print(f"\nError: {result['error']}")
+        return
 
-    print(f"\n{C.BOLD}⚠  ATTACK PATH DETECTED{C.RESET}")
-    print(f"{'═' * 50}")
-    print(f"  Source → Target:  {C.CYAN}{result['source']}{C.RESET} → {C.YELLOW}{result['target']}{C.RESET}")
-    print(f"  Total Hops:       {C.WHITE}{C.BOLD}{result['hop_count']}{C.RESET}")
-    print(f"  Path Risk Score:  {color}{result['total_weight']}{C.RESET}")
-    print(f"  Difficulty:       {color}{diff}{C.RESET}")
-    print(f"{'─' * 50}")
+    path_details = result.get("path_details", [])
+    cost = result["total_weight"]
+    hop_count = result["hop_count"]
+    severity = _severity_label(cost)
 
-    # Kill chain
-    chain = result.get("kill_chain_summary", [])
-    print(f"\n  {C.BOLD}Kill Chain:{C.RESET}")
-    for step in chain:
-        rc = _risk_color(step.get("risk_level", "low"))
-        cves = step.get("cves_exploited", [])
-        cve_str = f" {C.RED}({', '.join(cves)}){C.RESET}" if cves else ""
-        edge_str = f" {C.DIM}→ {step['edge_info']}{C.RESET}" if step.get("edge_info") and step["edge_info"] != "—" else ""
+    print(f"\nAttack Path  |  {hop_count} hops  |  Risk Score: {cost}  [{severity}]")
+    print(f"{'─' * 60}")
 
-        print(f"    {C.BOLD}Step {step['step']}.{C.RESET} "
-              f"{rc}{step['node']}{C.RESET} "
-              f"[{step['node_type']}]{cve_str}")
-        print(f"           {C.DIM}{step['action']}{edge_str}{C.RESET}")
+    for i in range(len(path_details) - 1):
+        step = path_details[i]
+        edge = step.get("edge_to_next", {})
+        next_step = path_details[i + 1]
 
-    # Path summary line
-    path_str = f" → ".join(result.get("path", []))
-    print(f"\n  {C.DIM}Path: {path_str}{C.RESET}")
+        src_name = step.get("label", step["node_id"])
+        src_type = step.get("type", "?")
+        tgt_name = next_step.get("label", next_step["node_id"])
+        tgt_type = next_step.get("type", "?")
+        rel = edge.get("relationship", "")
+        cve = edge.get("cve")
+        cvss = edge.get("cvss")
+
+        line = f"  {src_name} ({src_type})  --[{rel}]-->  {tgt_name} ({tgt_type})"
+        if cve:
+            line += f"  [{cve}, CVSS {cvss}]"
+        print(line)
     print()
 
 
 def _print_cycles(result: dict):
     """Print cycle detection results."""
     if not result["has_cycles"]:
-        print(f"\n{C.GREEN}✓ No circular permission loops detected.{C.RESET}\n")
+        print("\nNo circular permission loops detected.")
         return
 
-    risk = result["risk_summary"]
-    color = _severity_color(risk)
-
-    print(f"\n{C.BOLD}🔄 Circular Permission Detection{C.RESET}")
+    print(f"\nCircular Permission Detection")
     print(f"{'─' * 50}")
-    print(f"  Cycles Found:  {color}{result['total_cycles']}{C.RESET}")
-    print(f"  Risk Level:    {color}{risk}{C.RESET}")
-
+    print(f"  {result['total_cycles']} cycle(s) detected")
+    print()
     for i, cycle in enumerate(result["cycles"], 1):
-        cr = _severity_color(cycle["risk"])
-        print(f"\n  {C.BOLD}Cycle #{i}{C.RESET} ({cr}{cycle['risk']}{C.RESET}, "
-              f"weight: {cycle['total_weight']}, "
-              f"length: {cycle['length']}):")
-        print(f"    {C.YELLOW}{cycle['description']}{C.RESET}")
+        print(f"  Cycle #{i}: {cycle['description']}")
     print()
 
 
 def _print_critical_node(result: dict):
     """Print critical node analysis results."""
     if "error" in result:
-        print(f"\n{C.RED}✗ {result['error']}{C.RESET}\n")
+        print(f"\nError: {result['error']}")
         return
 
     cn = result.get("critical_node")
-    if not cn:
-        print(f"\n{C.GREEN}✓ No critical chokepoint node identified.{C.RESET}\n")
-        return
+    baseline = result.get("baseline_paths", 0)
 
-    print(f"\n{C.BOLD}🎯 Critical Node Analysis{C.RESET}")
+    print(f"\nCritical Node Analysis")
     print(f"{'─' * 50}")
-    print(f"  Baseline Attack Paths:  {C.WHITE}{result['baseline_paths']}{C.RESET}")
-    print(f"  Entry Points:           {', '.join(result['entry_points'])}")
-    print(f"  Crown Jewels:           {', '.join(result['crown_jewels'])}")
-
-    print(f"\n  {C.RED}{C.BOLD}► Critical Node: {cn['label']}{C.RESET}")
-    print(f"    Type:         {cn['type']}")
-    print(f"    Namespace:    {cn['namespace']}")
-    print(f"    Paths Broken: {C.RED}{cn['paths_broken']}{C.RESET} / {result['baseline_paths']}")
-    print(f"    Impact:       {C.RED}{C.BOLD}{cn['impact_percentage']}%{C.RESET}")
-
-    print(f"\n  {C.BOLD}💡 Recommendation:{C.RESET}")
-    print(f"    {C.CYAN}{result['recommendation']}{C.RESET}")
-
-    top5 = result.get("top_5_nodes", [])
-    if len(top5) > 1:
-        print(f"\n  {C.DIM}Top 5 Chokepoints:{C.RESET}")
-        for i, node in enumerate(top5, 1):
-            bar_len = int(node["impact_percentage"] / 5)
-            bar = "█" * bar_len + "░" * (20 - bar_len)
-            print(f"    {i}. {node['label']:<25} "
-                  f"{_risk_color(node.get('risk_level', 'low'))}{bar} {node['impact_percentage']}%{C.RESET} "
-                  f"({node['paths_broken']} paths)")
+    print(f"  Baseline attack paths: {baseline}")
     print()
 
+    if cn:
+        print(f"  Critical Node: {cn['label']} ({cn['type']})")
+        print(f"  Paths Eliminated: {cn['paths_broken']} of {baseline}")
+        print(f"  Impact: {cn['impact_percentage']}%")
+        print()
 
-def _print_top_critical_paths(result: dict):
-    """Print top critical attack paths with descriptions and mitigation."""
-    if "error" in result:
-        print(f"\n{C.RED}✗ {result['error']}{C.RESET}\n")
-        return
-
-    paths = result.get("top_critical_paths", [])
-    if not paths:
-        print(f"\n{C.YELLOW}⚠ No attack paths found between entry points and crown jewels.{C.RESET}\n")
-        return
-
-    print(f"\n{C.BOLD}🚨 Top Critical Attack Paths{C.RESET}")
-    print(f"{'─' * 70}")
-    print(f"  Found {result['total_paths_found']} total paths, showing top {len(paths)}")
-    print(f"  Entry Points: {result['entry_points_count']} | Crown Jewels: {result['crown_jewels_count']}")
-
-    for path in paths:
-        rank = path["rank"]
-        difficulty = path["difficulty"]
-        total_weight = path["total_weight"]
-
-        # Color code by difficulty
-        if difficulty == "TRIVIAL":
-            color = C.RED
-        elif difficulty == "EASY":
-            color = C.YELLOW
-        elif difficulty == "MODERATE":
-            color = C.BLUE
-        else:
-            color = C.GREEN
-
-        print(f"\n  {C.BOLD}{color}#{rank} Critical Path (Score: {total_weight:.1f} - {difficulty}){C.RESET}")
-        print(f"  {'─' * 50}")
-
-        # Path summary
-        path_nodes = [step.get("label", step["node_id"]) for step in path["path_details"]]
-        print(f"  {C.WHITE}Path:{C.RESET} {' → '.join(path_nodes)}")
-        print(f"  {C.WHITE}Hops:{C.RESET} {path['hop_count']} | {C.WHITE}Risk Factors:{C.RESET} {len(path['risk_factors'])}")
-
-        # Description
-        print(f"\n  {C.CYAN}📋 Description:{C.RESET}")
-        print(f"    {path['description']}")
-
-        # Mitigation suggestions
-        if path["mitigation_suggestions"]:
-            print(f"\n  {C.GREEN}🛡️  Mitigation Suggestions:{C.RESET}")
-            for i, suggestion in enumerate(path["mitigation_suggestions"], 1):
-                print(f"    {i}. {suggestion}")
-
-        # Risk factors
-        if path["risk_factors"]:
-            print(f"\n  {C.YELLOW}⚠️  Key Risk Factors:{C.RESET}")
-            for factor in path["risk_factors"]:
-                print(f"    • {factor}")
-
-        print(f"  {'─' * 50}")
-
-    print(f"\n{C.BOLD}💡 Summary:{C.RESET} Focus on mitigating the highest-ranked paths first.")
-    print(f"   These represent the most exploitable attack chains in your cluster.\n")
+        top5 = result.get("top_5_nodes", [])
+        if top5:
+            max_broken = top5[0]["paths_broken"] if top5 else 1
+            print("  Top 5 highest-impact nodes:")
+            for node in top5:
+                name_padded = f"{node['label']:<30}"
+                type_padded = f"({node['type']:<15})"
+                bar_len = int(node["paths_broken"] / max_broken * 20) if max_broken > 0 else 0
+                bar_str = "\u2588" * bar_len
+                print(f"    {name_padded} {type_padded}  -{node['paths_broken']} paths  {bar_str}")
+    else:
+        print("  No critical chokepoint node identified.")
+    print()
 
 
 # ── PDF Report Generation ─────────────────────────────────────
 
-def _generate_pdf(engine: K8sGraphEngine, output_path: str, blast_result=None, path_result=None, cycle_result=None, critical_result=None):
+def _generate_pdf(engine: K8sGraphEngine, output_path: str):
     """Generate a PDF Kill Chain Report using reportlab."""
     try:
         from reportlab.lib.pagesizes import A4
@@ -340,8 +322,8 @@ def _generate_pdf(engine: K8sGraphEngine, output_path: str, blast_result=None, p
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     except ImportError:
-        print(f"{C.RED}✗ reportlab is required for PDF generation.{C.RESET}")
-        print(f"  Install it with: pip install reportlab")
+        print("Error: reportlab is required for PDF generation.")
+        print("  Install it with: pip install reportlab")
         return
 
     doc = SimpleDocTemplate(
@@ -356,13 +338,11 @@ def _generate_pdf(engine: K8sGraphEngine, output_path: str, blast_result=None, p
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
         "KPATitle", parent=styles["Title"],
-        fontSize=24, textColor=HexColor("#0ea5e9"),
-        spaceAfter=6,
+        fontSize=24, textColor=HexColor("#0ea5e9"), spaceAfter=6,
     ))
     styles.add(ParagraphStyle(
         "KPASubtitle", parent=styles["Normal"],
-        fontSize=10, textColor=HexColor("#64748b"),
-        spaceAfter=12,
+        fontSize=10, textColor=HexColor("#64748b"), spaceAfter=12,
     ))
     styles.add(ParagraphStyle(
         "KPAHeading", parent=styles["Heading2"],
@@ -371,306 +351,138 @@ def _generate_pdf(engine: K8sGraphEngine, output_path: str, blast_result=None, p
     ))
     styles.add(ParagraphStyle(
         "KPABody", parent=styles["Normal"],
-        fontSize=10, textColor=HexColor("#334155"),
-        leading=14,
+        fontSize=10, textColor=HexColor("#334155"), leading=14,
     ))
     styles.add(ParagraphStyle(
         "KPAWarning", parent=styles["Normal"],
         fontSize=11, textColor=HexColor("#dc2626"),
         leading=14, fontName="Helvetica-Bold",
     ))
-    styles.add(ParagraphStyle(
-        "KPAMono", parent=styles["Normal"],
-        fontSize=9, textColor=HexColor("#475569"),
-        fontName="Courier", leading=12,
-    ))
 
     elements = []
 
-    # Title
-    elements.append(Paragraph("KubePathAudit — Kill Chain Report", styles["KPATitle"]))
-    graph_data = engine.get_graph_data()
-    meta = graph_data.get("metadata", {})
+    meta = engine.raw_data.get("metadata", {})
+    cluster_name = meta.get("cluster", meta.get("cluster_name", "Unknown"))
+    stats = engine.get_graph_data()["stats"]
+
+    elements.append(Paragraph("KubeInsights \u2014 Kill Chain Report", styles["KPATitle"]))
     elements.append(Paragraph(
-        f"Cluster: {meta.get('cluster_name', 'Unknown')} | "
+        f"Cluster: {cluster_name} | "
         f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | "
-        f"Nodes: {graph_data['stats']['total_nodes']} | "
-        f"Edges: {graph_data['stats']['total_edges']}",
+        f"Nodes: {stats['total_nodes']} | Edges: {stats['total_edges']}",
         styles["KPASubtitle"],
     ))
     elements.append(Spacer(1, 8 * mm))
 
-    # ── Graph Summary Section
-    elements.append(Paragraph("1. Graph Summary", styles["KPAHeading"]))
-    stats = graph_data["stats"]
-    summary_data = [
-        ["Metric", "Value"],
-        ["Total Nodes", str(stats["total_nodes"])],
-        ["Total Edges", str(stats["total_edges"])],
-        ["Crown Jewels", str(stats["crown_jewels"])],
-        ["Critical Nodes", str(stats["critical_nodes"])],
-    ]
-    if meta.get("scenario"):
-        summary_data.append(["Scenario", meta["scenario"]])
-
-    t = Table(summary_data, colWidths=[70 * mm, 100 * mm])
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), HexColor("#0ea5e9")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#ffffff")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#e2e8f0")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [HexColor("#f8fafc"), HexColor("#ffffff")]),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-    ]))
-    elements.append(t)
-    elements.append(Spacer(1, 6 * mm))
-
-    # ── Shortest Path / Kill Chain
-    if path_result and path_result.get("path_exists"):
-        elements.append(Paragraph("2. Attack Path — Kill Chain", styles["KPAHeading"]))
+    # Attack paths
+    all_paths = engine.find_all_attack_paths()
+    if all_paths:
+        elements.append(Paragraph("1. Attack Path Detection (Dijkstra)", styles["KPAHeading"]))
         elements.append(Paragraph(
-            f"⚠ {path_result['difficulty']} attack path detected: "
-            f"{path_result['source']} → {path_result['target']}",
+            f"{len(all_paths)} attack path(s) detected across all source-to-sink pairs.",
             styles["KPAWarning"],
         ))
-        elements.append(Spacer(1, 3 * mm))
 
-        path_summary = [
-            ["Metric", "Value"],
-            ["Source", path_result["source"]],
-            ["Target", path_result["target"]],
-            ["Total Hops", str(path_result["hop_count"])],
-            ["Path Risk Score", str(path_result["total_weight"])],
-            ["Difficulty", path_result["difficulty"]],
-        ]
-        t2 = Table(path_summary, colWidths=[70 * mm, 100 * mm])
-        t2.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#dc2626")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#ffffff")),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#e2e8f0")),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [HexColor("#fef2f2"), HexColor("#ffffff")]),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ]))
-        elements.append(t2)
-        elements.append(Spacer(1, 4 * mm))
-
-        # Kill chain steps
-        chain = path_result.get("kill_chain_summary", [])
-        if chain:
-            elements.append(Paragraph("Detailed Kill Chain Steps:", styles["KPABody"]))
-            elements.append(Spacer(1, 2 * mm))
-            chain_data = [["Step", "Node", "Type", "Action", "CVEs"]]
-            for step in chain:
-                cves = ", ".join(step.get("cves_exploited", [])) or "—"
-                chain_data.append([
-                    str(step["step"]),
-                    step["node"],
-                    step["node_type"],
-                    step["action"][:40],
-                    cves,
-                ])
-
-            t3 = Table(chain_data, colWidths=[12 * mm, 35 * mm, 25 * mm, 55 * mm, 40 * mm])
-            t3.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), HexColor("#1e293b")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#ffffff")),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#e2e8f0")),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [HexColor("#f8fafc"), HexColor("#ffffff")]),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ]))
-            elements.append(t3)
-        elements.append(Spacer(1, 6 * mm))
-
-    # ── Blast Radius
-    if blast_result and blast_result.get("affected_nodes"):
-        elements.append(Paragraph("3. Blast Radius Analysis", styles["KPAHeading"]))
-        elements.append(Paragraph(
-            f"Source: {blast_result['source']} | "
-            f"Max Hops: {blast_result['max_hops']} | "
-            f"Affected: {blast_result['total_affected']} nodes | "
-            f"Risk: {blast_result['risk_summary']}",
-            styles["KPABody"],
-        ))
-        if blast_result.get("crown_jewels_reached"):
+        for idx, ap in enumerate(all_paths[:10], 1):  # Top 10 in PDF
+            severity = _severity_label(ap["cost"])
+            path_str = " \u2192 ".join(
+                engine.graph.nodes[n].get("label", n) for n in ap["path"]
+            )
             elements.append(Paragraph(
-                f"⚠ Crown Jewels Reached: {', '.join(blast_result.get('crown_jewel_names', []))}",
-                styles["KPAWarning"],
+                f"Path #{idx}: {path_str} | {ap['hops']} hops | Score: {ap['cost']} [{severity}]",
+                styles["KPABody"],
             ))
         elements.append(Spacer(1, 6 * mm))
 
-    # ── Cycle Detection
-    if cycle_result:
-        elements.append(Paragraph("4. Circular Permission Detection", styles["KPAHeading"]))
-        if cycle_result["has_cycles"]:
-            elements.append(Paragraph(
-                f"⚠ {cycle_result['total_cycles']} circular permission loop(s) detected! "
-                f"Risk: {cycle_result['risk_summary']}",
-                styles["KPAWarning"],
-            ))
-            for cycle in cycle_result["cycles"]:
-                elements.append(Paragraph(f"  • {cycle['description']}", styles["KPAMono"]))
-        else:
-            elements.append(Paragraph("✓ No circular permission loops detected.", styles["KPABody"]))
-        elements.append(Spacer(1, 6 * mm))
-
-    # ── Critical Node
-    if critical_result and critical_result.get("critical_node"):
-        cn = critical_result["critical_node"]
-        elements.append(Paragraph("5. Critical Node Analysis", styles["KPAHeading"]))
+    # Critical node
+    critical_result = engine.critical_node_analysis()
+    cn = critical_result.get("critical_node")
+    if cn:
+        elements.append(Paragraph("2. Critical Node Analysis", styles["KPAHeading"]))
         elements.append(Paragraph(
-            f"Recommendation: Remove or restrict '{cn['label']}' "
-            f"to break {cn['paths_broken']}/{critical_result['baseline_paths']} attack paths "
+            f"Recommendation: Remove '{cn['label']}' ({cn['type']}) to eliminate "
+            f"{cn['paths_broken']}/{critical_result['baseline_paths']} attack paths "
             f"({cn['impact_percentage']}% impact).",
             styles["KPAWarning"],
         ))
 
-        top5 = critical_result.get("top_5_nodes", [])
-        if top5:
-            elements.append(Spacer(1, 3 * mm))
-            cn_data = [["Rank", "Node", "Type", "Paths Broken", "Impact %"]]
-            for i, node in enumerate(top5, 1):
-                cn_data.append([
-                    str(i),
-                    node["label"],
-                    node["type"],
-                    str(node["paths_broken"]),
-                    f"{node['impact_percentage']}%",
-                ])
-            t4 = Table(cn_data, colWidths=[15 * mm, 45 * mm, 30 * mm, 35 * mm, 25 * mm])
-            t4.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), HexColor("#7c3aed")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), HexColor("#ffffff")),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 9),
-                ("GRID", (0, 0), (-1, -1), 0.5, HexColor("#e2e8f0")),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [HexColor("#faf5ff"), HexColor("#ffffff")]),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-            ]))
-            elements.append(t4)
-        elements.append(Spacer(1, 6 * mm))
+    # Cycles
+    cycle_result = engine.dfs_cycle_detection()
+    elements.append(Paragraph("3. Circular Permission Detection", styles["KPAHeading"]))
+    if cycle_result["has_cycles"]:
+        for cycle in cycle_result["cycles"]:
+            elements.append(Paragraph(f"Cycle: {cycle['description']}", styles["KPABody"]))
+    else:
+        elements.append(Paragraph("No circular permission loops detected.", styles["KPABody"]))
 
-    # ── Footer
+    # Footer
     elements.append(Spacer(1, 10 * mm))
     elements.append(Paragraph(
-        f"Generated by KubePathAudit CLI v1.0 • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} • Confidential",
+        f"Generated by KubeInsights CLI v1.0 | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         styles["KPASubtitle"],
     ))
 
     doc.build(elements)
-    print(f"\n{C.GREEN}✓ PDF report saved to: {output_path}{C.RESET}")
+    print(f"\nPDF report saved to: {output_path}")
 
 
 # ── Subcommand Handlers ───────────────────────────────────────
 
 def cmd_analyze(args):
     """Run all 4 algorithms and produce a full Kill Chain Report."""
-    is_json = getattr(args, 'json', False)
-    if not is_json:
-        _print_banner()
     engine = _load_engine(args.input)
-    if not is_json:
-        _print_graph_summary(engine)
 
-    # Run all algorithms
-    if not is_json:
-        print(f"{C.BOLD}Running security analysis...{C.RESET}\n")
-
-    # 1. Find entry points
-    entry_points = [
-        n for n, d in engine.graph.nodes(data=True)
-        if d.get("type") == "internet" or d.get("risk_level") == "entry-point"
-    ]
-    crown_jewels = [
-        n for n, d in engine.graph.nodes(data=True)
-        if d.get("risk_level") == "crown-jewel"
-    ]
-
-    # 2. Blast radius from first entry point
-    blast_result = None
-    if entry_points:
-        source = args.blast_source or entry_points[0]
-        blast_result = engine.bfs_blast_radius(source, args.hops)
-        if not is_json:
-            _print_blast_radius(blast_result)
-
-    # 3. Shortest path from entry → each crown jewel
-    path_result = None
-    if entry_points and crown_jewels:
-        source = args.path_source or entry_points[0]
-        target = args.path_target or crown_jewels[0]
-        path_result = engine.dijkstra_shortest_path(source, target)
-        if not is_json:
-            _print_shortest_path(path_result)
-
-    # 4. Cycle detection
-    cycle_result = engine.dfs_cycle_detection()
-    if not is_json:
-        _print_cycles(cycle_result)
-
-    # 5. Critical node
-    critical_result = engine.critical_node_analysis()
-    if not is_json:
-        _print_critical_node(critical_result)
-
-    # ── Temporal diff (if --diff flag)
-    if args.diff:
-        prev_snapshot = get_latest_snapshot()
-        if prev_snapshot:
-            current_data = engine.get_graph_data()
-            current_data["nodes"] = [
-                {"id": n, **dict(d)} for n, d in engine.graph.nodes(data=True)
-            ]
-            current_data["edges"] = [
-                {"source": s, "target": t, **dict(d)} for s, t, d in engine.graph.edges(data=True)
-            ]
-            diff = diff_graphs(prev_snapshot, current_data)
-            if not is_json:
-                print(format_diff_report(diff))
-        else:
-            if not is_json:
-                print(f"\n{C.YELLOW}⚠ No previous snapshot found for diff. Saving current state as first snapshot.{C.RESET}")
-
-    # Save snapshot
-    if args.snapshot:
-        graph_data = engine.get_graph_data()
-        raw_data = {"nodes": engine.raw_data.get("nodes", []), "edges": engine.raw_data.get("edges", []),
-                     "metadata": engine.raw_data.get("metadata", {})}
-        snapshot_path = save_snapshot(raw_data, label=args.snapshot_label or "")
-        if not is_json:
-            print(f"{C.GREEN}✓ Snapshot saved: {snapshot_path}{C.RESET}")
-
-    # ── PDF Export
-    if args.pdf:
-        _generate_pdf(engine, args.pdf, blast_result, path_result, cycle_result, critical_result)
-
-    # ── JSON output
     if args.json:
+        # JSON mode — run everything and output as JSON
+        all_paths = engine.find_all_attack_paths()
+        cycle_result = engine.dfs_cycle_detection()
+        critical_result = engine.critical_node_analysis()
+
+        sources = engine._get_sources()
+        blast_results = {}
+        for src in sources:
+            blast_results[src] = engine.bfs_blast_radius(src, args.hops)
+
         output = {
-            "graph_summary": engine.get_graph_data()["stats"],
-            "blast_radius": blast_result,
-            "shortest_path": path_result,
+            "graph_stats": engine.get_graph_data()["stats"],
+            "attack_paths": all_paths,
+            "blast_radius": blast_results,
             "cycles": cycle_result,
             "critical_node": critical_result,
         }
-        # Convert sets to lists for JSON serialization
         print(json.dumps(output, indent=2, default=str))
+        return
+
+    # Full text report
+    _print_full_report(engine, hops=args.hops)
+
+    # Temporal diff
+    if args.diff:
+        prev_snapshot = get_latest_snapshot()
+        if prev_snapshot:
+            current_data = {
+                "nodes": engine.raw_data.get("nodes", []),
+                "edges": engine.raw_data.get("edges", []),
+                "metadata": engine.raw_data.get("metadata", {}),
+            }
+            diff = diff_graphs(prev_snapshot, current_data)
+            print(format_diff_report(diff))
+        else:
+            print("No previous snapshot found for diff. Saving current state as first snapshot.")
+
+    # Save snapshot
+    if args.snapshot:
+        raw_data = {
+            "nodes": engine.raw_data.get("nodes", []),
+            "edges": engine.raw_data.get("edges", []),
+            "metadata": engine.raw_data.get("metadata", {}),
+        }
+        snapshot_path = save_snapshot(raw_data, label=args.snapshot_label or "")
+        print(f"Snapshot saved: {snapshot_path}")
+
+    # PDF
+    if args.pdf:
+        _generate_pdf(engine, args.pdf)
 
 
 def cmd_blast_radius(args):
@@ -681,8 +493,7 @@ def cmd_blast_radius(args):
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
-        _print_graph_summary(engine)
-        _print_blast_radius(result)
+        _print_blast_radius(engine, result)
 
 
 def cmd_shortest_path(args):
@@ -693,7 +504,6 @@ def cmd_shortest_path(args):
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
-        _print_graph_summary(engine)
         _print_shortest_path(result)
 
 
@@ -705,7 +515,6 @@ def cmd_detect_cycles(args):
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
-        _print_graph_summary(engine)
         _print_cycles(result)
 
 
@@ -717,50 +526,62 @@ def cmd_critical_node(args):
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
-        _print_graph_summary(engine)
         _print_critical_node(result)
 
 
 def cmd_top_critical_paths(args):
-    """Show top critical attack paths with descriptions and mitigation."""
+    """Show top critical attack paths."""
     engine = _load_engine(args.input)
     result = engine.get_top_critical_paths(max_paths=args.count)
 
     if args.json:
         print(json.dumps(result, indent=2, default=str))
     else:
-        _print_graph_summary(engine)
-        _print_top_critical_paths(result)
+        paths = result.get("top_critical_paths", [])
+        if not paths:
+            print("\nNo attack paths found.")
+            return
+
+        print(f"\nTop {len(paths)} Critical Attack Paths")
+        print(f"{'─' * 60}")
+        for p in paths:
+            severity = _severity_label(p["total_weight"])
+            path_nodes = [s.get("label", s["node_id"]) for s in p["path_details"]]
+            print(f"  #{p['rank']}  {' → '.join(path_nodes)}")
+            print(f"       {p['hop_count']} hops | Score: {p['total_weight']} [{severity}]")
+            if p.get("mitigation_suggestions"):
+                for sug in p["mitigation_suggestions"][:2]:
+                    print(f"       → {sug}")
+            print()
 
 
 def cmd_ingest(args):
     """Ingest live cluster state via kubectl."""
-    _print_banner()
     from ingest import ingest_cluster
     data = ingest_cluster(output_path=args.output, live_cve=args.live_cve)
 
     if args.snapshot:
         snapshot_path = save_snapshot(data, label="ingest")
-        print(f"{C.GREEN}✓ Snapshot saved: {snapshot_path}{C.RESET}")
+        print(f"Snapshot saved: {snapshot_path}")
 
-    print(f"\n{C.GREEN}✓ Ingestion complete. Run analysis with:{C.RESET}")
-    print(f"  {C.CYAN}python cli.py analyze --input {args.output}{C.RESET}\n")
+    print(f"\nIngestion complete. Run analysis with:")
+    print(f"  python cli.py analyze --input {args.output}")
 
 
 def cmd_snapshots(args):
     """List all stored snapshots."""
     snapshots = list_snapshots()
     if not snapshots:
-        print(f"\n{C.YELLOW}No snapshots found. Run an analysis with --snapshot to create one.{C.RESET}\n")
+        print("\nNo snapshots found. Run an analysis with --snapshot to create one.")
         return
 
-    print(f"\n{C.BOLD}📸 Stored Snapshots{C.RESET}")
+    print(f"\nStored Snapshots")
     print(f"{'─' * 70}")
     for i, s in enumerate(snapshots, 1):
         label = f" [{s['label']}]" if s.get("label") else ""
-        print(f"  {i}. {C.CYAN}{s['filename']}{C.RESET}{label}")
-        print(f"     {C.DIM}Timestamp: {s['timestamp']} | "
-              f"Nodes: {s['node_count']} | Edges: {s['edge_count']}{C.RESET}")
+        print(f"  {i}. {s['filename']}{label}")
+        print(f"     Timestamp: {s['timestamp']} | "
+              f"Nodes: {s['node_count']} | Edges: {s['edge_count']}")
     print()
 
 
@@ -771,12 +592,12 @@ def cmd_diff(args):
         old_data = load_snapshot(args.old)
         new_data = load_snapshot(args.new)
         if not old_data or not new_data:
-            print(f"{C.RED}✗ Could not load one or both snapshot files.{C.RESET}")
+            print("Error: Could not load one or both snapshot files.")
             return
     elif args.input:
         old_data = get_latest_snapshot()
         if not old_data:
-            print(f"{C.RED}✗ No previous snapshot found. Cannot diff.{C.RESET}")
+            print("Error: No previous snapshot found. Cannot diff.")
             return
         engine = _load_engine(args.input)
         new_data = {
@@ -785,7 +606,7 @@ def cmd_diff(args):
             "metadata": engine.raw_data.get("metadata", {}),
         }
     else:
-        print(f"{C.RED}✗ Provide --input or both --old and --new snapshot paths.{C.RESET}")
+        print("Error: Provide --input or both --old and --new snapshot paths.")
         return
 
     diff = diff_graphs(old_data, new_data)
@@ -800,16 +621,17 @@ def cmd_diff(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="kubepathaudit",
-        description="KubePathAudit — Graph-Based Security Analysis for Cloud-Native Infrastructure",
+        prog="kubeinsights",
+        description="KubeInsights — Kubernetes Attack Path Visualizer CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python cli.py analyze --input mock-cluster-graph.json
+  python cli.py analyze --input mock-cluster-graph.json --full-report
   python cli.py analyze --input mock-cluster-graph.json --pdf report.pdf
   python cli.py analyze --input mock-cluster-graph.json --json
-  python cli.py blast-radius --source internet --hops 4 --input mock-cluster-graph.json
-  python cli.py shortest-path --source internet --target prod-database --input mock-cluster-graph.json
+  python cli.py blast-radius --source pod-webfront --hops 3 --input mock-cluster-graph.json
+  python cli.py shortest-path --source user-dev1 --target db-production --input mock-cluster-graph.json
   python cli.py detect-cycles --input mock-cluster-graph.json
   python cli.py critical-node --input mock-cluster-graph.json
   python cli.py ingest -o cluster-graph.json
@@ -818,19 +640,18 @@ Examples:
         """,
     )
 
-    parser.add_argument("--no-color", action="store_true", help="Disable colored output")
-
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # ── analyze ──
+    # ── analyze (full report) ──
     p_analyze = subparsers.add_parser("analyze", help="Run full security analysis (all 4 algorithms)")
     p_analyze.add_argument("--input", "-i", default="mock-cluster-graph.json", help="Path to cluster graph JSON")
-    p_analyze.add_argument("--pdf", help="Export Kill Chain Report as PDF to this file path")
+    p_analyze.add_argument("--full-report", action="store_true", help="Generate full Kill Chain report (default behavior)")
+    p_analyze.add_argument("--pdf", help="Export Kill Chain Report as PDF")
     p_analyze.add_argument("--json", action="store_true", help="Output results as JSON")
     p_analyze.add_argument("--hops", type=int, default=3, help="Max hops for blast radius (default: 3)")
     p_analyze.add_argument("--blast-source", help="Override source node for blast radius")
-    p_analyze.add_argument("--path-source", help="Override source node for shortest path")
-    p_analyze.add_argument("--path-target", help="Override target node for shortest path")
+    p_analyze.add_argument("--path-source", help="Override source for shortest path")
+    p_analyze.add_argument("--path-target", help="Override target for shortest path")
     p_analyze.add_argument("--diff", action="store_true", help="Diff against previous snapshot")
     p_analyze.add_argument("--snapshot", action="store_true", help="Save current scan as snapshot")
     p_analyze.add_argument("--snapshot-label", help="Label for the snapshot")
@@ -865,15 +686,15 @@ Examples:
     p_critical.set_defaults(func=cmd_critical_node)
 
     # ── top-critical-paths ──
-    p_top_paths = subparsers.add_parser("top-critical-paths", help="Show top critical attack paths with descriptions")
+    p_top_paths = subparsers.add_parser("top-critical-paths", help="Show top critical attack paths")
     p_top_paths.add_argument("--input", "-i", default="mock-cluster-graph.json", help="Path to cluster graph JSON")
-    p_top_paths.add_argument("--count", "-n", type=int, default=3, help="Number of top paths to show (default: 3)")
+    p_top_paths.add_argument("--count", "-n", type=int, default=3, help="Number of paths (default: 3)")
     p_top_paths.add_argument("--json", action="store_true", help="Output as JSON")
     p_top_paths.set_defaults(func=cmd_top_critical_paths)
 
     # ── ingest ──
     p_ingest = subparsers.add_parser("ingest", help="Ingest live Kubernetes cluster state via kubectl")
-    p_ingest.add_argument("--output", "-o", default="cluster-graph.json", help="Output JSON file path")
+    p_ingest.add_argument("--output", "-o", default="cluster-graph.json", help="Output JSON path")
     p_ingest.add_argument("--live-cve", action="store_true", help="Enable live NVD API CVE lookups")
     p_ingest.add_argument("--snapshot", action="store_true", help="Save ingested data as snapshot")
     p_ingest.set_defaults(func=cmd_ingest)
@@ -891,13 +712,6 @@ Examples:
     p_diff.set_defaults(func=cmd_diff)
 
     args = parser.parse_args()
-
-    if getattr(args, 'no_color', False):
-        C.disable()
-
-    # Detect Windows terminal and disable color if output is piped
-    if sys.platform == 'win32' and not sys.stdout.isatty():
-        C.disable()
 
     if not args.command:
         parser.print_help()

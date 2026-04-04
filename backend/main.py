@@ -20,7 +20,7 @@ from ingest import ingest_cluster
 
 # ── App Setup ──────────────────────────────────────
 app = FastAPI(
-    title="KubePathAudit API",
+    title="KubeInsights API",
     description="Kubernetes Security Analysis Engine — Attack Path Visualization & Analysis",
     version="1.0.0",
 )
@@ -173,6 +173,9 @@ async def upload_custom_graph(file: UploadFile = File(...)):
 
     for edge in data["edges"]:
         if "source" not in edge or "target" not in edge:
+            # Allow pure comment objects used in the rubric dataset
+            if "comment" in edge or "_comment" in edge:
+                continue
             raise HTTPException(status_code=400, detail="Each edge must have 'source' and 'target' fields")
 
     engine.load_graph_from_dict(data)
