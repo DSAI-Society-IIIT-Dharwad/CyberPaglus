@@ -127,6 +127,12 @@ def critical_node():
     return engine.critical_node_analysis()
 
 
+@app.get("/api/top-critical-paths")
+def top_critical_paths(max_paths: int = 3):
+    """Get top critical attack paths with descriptions and mitigation suggestions."""
+    return engine.get_top_critical_paths(max_paths=max_paths)
+
+
 @app.post("/api/remediate")
 def remediate(req: RemediateRequest):
     """Remove a node from the graph (simulating remediation)."""
@@ -173,6 +179,23 @@ async def upload_custom_graph(file: UploadFile = File(...)):
 
     return {
         "message": f"Custom graph loaded successfully: {data.get('metadata', {}).get('cluster_name', 'Custom Cluster')}",
+        "graph": engine.get_graph_data(),
+    }
+
+
+@app.post("/api/recalculate-weights")
+def recalculate_weights(include_details: bool = False):
+    """
+    Recalculate all edge weights using the Advanced Weight Scorer.
+    Replaces simple CVSS-based weights with 5-parameter multi-factor analysis.
+    
+    Parameters:
+        include_details: If True, returns detailed breakdown for each edge weight calculation
+    """
+    result = engine.recalculate_edge_weights_advanced(include_details=include_details)
+    return {
+        "status": "success",
+        "recalculation": result,
         "graph": engine.get_graph_data(),
     }
 

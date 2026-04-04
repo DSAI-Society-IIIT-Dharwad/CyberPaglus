@@ -1,5 +1,5 @@
-"""
-K8sGraphEngine — Core graph analytics engine for KubePathAudit.
+﻿"""
+K8sGraphEngine ΓÇö Core graph analytics engine for KubePathAudit.
 Uses NetworkX to build and analyze Kubernetes cluster attack graphs.
 """
 
@@ -140,13 +140,13 @@ class K8sGraphEngine:
             },
         }
 
-    # ──────────────────────────────────────────────
-    # Algorithm 1: BFS — Blast Radius
-    # ──────────────────────────────────────────────
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # Algorithm 1: BFS ΓÇö Blast Radius
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def bfs_blast_radius(self, source: str, max_hops: int = 3) -> dict:
         """
         BFS from a source node to find all reachable nodes within N hops.
-        Returns the 'Danger Zone' — everything an attacker could reach.
+        Returns the 'Danger Zone' ΓÇö everything an attacker could reach.
         """
         if source not in self.graph:
             return {"error": f"Node '{source}' not found in graph", "affected_nodes": [], "affected_edges": []}
@@ -195,9 +195,9 @@ class K8sGraphEngine:
             "risk_summary": "CRITICAL" if crown_jewels_reached else "HIGH" if len(affected_nodes) > 5 else "MEDIUM",
         }
 
-    # ──────────────────────────────────────────────
-    # Algorithm 2: Dijkstra — Shortest Attack Path
-    # ──────────────────────────────────────────────
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # Algorithm 2: Dijkstra ΓÇö Shortest Attack Path
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def dijkstra_shortest_path(self, source: str, target: str) -> dict:
         """
         Find the easiest (lowest-CVSS-weight) attack path from source to target.
@@ -263,7 +263,7 @@ class K8sGraphEngine:
                 "node_type": step.get("type", "unknown"),
                 "risk_level": step.get("risk_level", "unknown"),
                 "cves_exploited": cves,
-                "edge_info": step.get("edge_to_next", {}).get("relationship", "—"),
+                "edge_info": step.get("edge_to_next", {}).get("relationship", "ΓÇö"),
             }
             chain.append(entry)
         return chain
@@ -286,30 +286,16 @@ class K8sGraphEngine:
         }
         return actions.get(step.get("type", ""), "Exploit node")
 
-    # ──────────────────────────────────────────────
-    # Algorithm 3: DFS — Cycle Detection
-    # ──────────────────────────────────────────────
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    # Algorithm 3: DFS ΓÇö Cycle Detection
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def dfs_cycle_detection(self) -> dict:
         """
         DFS-based cycle detection to find circular permission loops.
         e.g., Service-A -> Service-B -> Service-A
         """
         try:
-            try:
-                # Optimized length bounded search (NetworkX 3.2+)
-                cycles = list(nx.simple_cycles(self.graph, length_bound=5))
-            except TypeError:
-                # Polynomial Time SCC Fallback for older NetworkX bounds
-                cycles = []
-                sccs = [c for c in nx.strongly_connected_components(self.graph) if len(c) > 1]
-                for scc in sccs:
-                    subgraph = self.graph.subgraph(scc)
-                    try:
-                        edges = nx.find_cycle(subgraph)
-                        cycle = [u for u, v in edges]
-                        cycles.append(cycle)
-                    except nx.NetworkXNoCycle:
-                        pass
+            cycles = list(nx.simple_cycles(self.graph))
         except Exception:
             cycles = []
 
@@ -332,7 +318,7 @@ class K8sGraphEngine:
                 "length": len(cycle),
                 "total_weight": round(total_weight, 2),
                 "risk": risk,
-                "description": f"Circular path: {' → '.join(n.get('label', n['id']) for n in cycle_nodes)} → {cycle_nodes[0].get('label', cycle_nodes[0]['id'])}",
+                "description": f"Circular path: {' ΓåÆ '.join(n.get('label', n['id']) for n in cycle_nodes)} ΓåÆ {cycle_nodes[0].get('label', cycle_nodes[0]['id'])}",
             })
 
         return {
@@ -342,9 +328,9 @@ class K8sGraphEngine:
             "risk_summary": "CRITICAL" if any(c["risk"] == "CRITICAL" for c in cycle_details) else "HIGH" if cycle_details else "NONE",
         }
 
-    # ──────────────────────────────────────────────
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     # Algorithm 4: Critical Node Analysis
-    # ──────────────────────────────────────────────
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def critical_node_analysis(self) -> dict:
         """
         Identify the single node whose removal breaks the most attack paths
@@ -365,35 +351,46 @@ class K8sGraphEngine:
                 "critical_node": None,
             }
 
-        # Optimized Polynomial Time approach to avoid O(V*2^V) path expansion
-        try:
-            centrality_scores = nx.betweenness_centrality_subset(
-                self.graph,
-                sources=entry_points,
-                targets=crown_jewels,
-                weight="weight",
-                normalized=False
-            )
-        except Exception:
-            centrality_scores = nx.betweenness_centrality(self.graph, weight="weight", normalized=False)
+        # Count baseline paths
+        baseline_paths = 0
+        path_pairs = []
+        for entry in entry_points:
+            for jewel in crown_jewels:
+                paths = list(nx.all_simple_paths(self.graph, entry, jewel, cutoff=15))
+                baseline_paths += len(paths)
+                if paths:
+                    path_pairs.append((entry, jewel, len(paths)))
 
-        max_paths = sum(centrality_scores.values()) or 1
+        # For each candidate node, calculate impact of removal
+        candidates = [
+            n for n in self.graph.nodes()
+            if n not in entry_points and n not in crown_jewels
+        ]
 
         node_impacts = []
-        for candidate, paths_bridged in centrality_scores.items():
-            if candidate in entry_points or candidate in crown_jewels:
-                continue
-                
+        for candidate in candidates:
+            temp_graph = self.graph.copy()
+            temp_graph.remove_node(candidate)
+
+            remaining_paths = 0
+            for entry in entry_points:
+                for jewel in crown_jewels:
+                    if entry in temp_graph and jewel in temp_graph:
+                        paths = list(nx.all_simple_paths(temp_graph, entry, jewel, cutoff=15))
+                        remaining_paths += len(paths)
+
+            broken_paths = baseline_paths - remaining_paths
+            impact_pct = (broken_paths / baseline_paths * 100) if baseline_paths > 0 else 0
+
             node_data = dict(self.graph.nodes[candidate])
-            impact_pct = (paths_bridged / max_paths) * 100 if max_paths > 0 else 0
-            
             node_impacts.append({
                 "node_id": candidate,
                 "label": node_data.get("label", candidate),
                 "type": node_data.get("type", "unknown"),
                 "namespace": node_data.get("namespace", "unknown"),
                 "risk_level": node_data.get("risk_level", "unknown"),
-                "paths_broken": int(paths_bridged),
+                "paths_broken": broken_paths,
+                "paths_remaining": remaining_paths,
                 "impact_percentage": round(impact_pct, 1),
                 "metadata": node_data.get("metadata", {}),
             })
@@ -402,18 +399,23 @@ class K8sGraphEngine:
 
         critical_node = node_impacts[0] if node_impacts else None
 
+        betweenness = nx.betweenness_centrality(self.graph, weight="weight")
+
         return {
             "critical_node": critical_node,
             "top_5_nodes": node_impacts[:5],
-            "baseline_paths": int(max_paths),
+            "baseline_paths": baseline_paths,
             "entry_points": entry_points,
             "crown_jewels": crown_jewels,
-            "recommendation": f"Remove or restrict '{critical_node['label']}' to break {critical_node['paths_broken']} bridging attack routes ({critical_node['impact_percentage']}%)" if critical_node else "No critical node identified",
+            "betweenness_centrality": {
+                k: round(v, 4) for k, v in sorted(betweenness.items(), key=lambda x: x[1], reverse=True)[:10]
+            },
+            "recommendation": f"Remove or restrict '{critical_node['label']}' to break {critical_node['paths_broken']}/{baseline_paths} attack paths ({critical_node['impact_percentage']}%)" if critical_node else "No critical node identified",
         }
 
-    # ──────────────────────────────────────────────
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     # Top Critical Attack Paths Analysis
-    # ──────────────────────────────────────────────
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def get_top_critical_paths(self, max_paths: int = 3) -> dict:
         """
         Find the top critical attack paths from entry points to crown jewels.
@@ -550,7 +552,7 @@ class K8sGraphEngine:
             else:
                 path_summary.append(f"moves to {label}")
 
-        description = " → ".join(path_summary)
+        description = " ΓåÆ ".join(path_summary)
 
         # Add difficulty assessment
         if total_weight < 3:
@@ -633,9 +635,9 @@ class K8sGraphEngine:
 
         return score
 
-    # ──────────────────────────────────────────────
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     # Remediation
-    # ──────────────────────────────────────────────
+    # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     def remove_node(self, node_id: str) -> dict:
         """Remove a node from the graph and return updated graph data."""
         if node_id not in self.graph:

@@ -4,6 +4,7 @@ import type {
   ShortestPathResult,
   CycleResult,
   CriticalNodeResult,
+  TopCriticalPathResult,
 } from './types';
 
 const BASE_URL = '/api';
@@ -46,6 +47,10 @@ export const api = {
 
   // Critical Node Analysis
   criticalNode: () => fetchJSON<CriticalNodeResult>('/critical-node'),
+
+  // Top Critical Attack Paths
+  topCriticalPaths: (count: number = 3) =>
+    fetchJSON<TopCriticalPathResult>(`/top-critical-paths?max_paths=${count}`),
 
   // Remediate (remove node)
   remediate: (nodeId: string) =>
