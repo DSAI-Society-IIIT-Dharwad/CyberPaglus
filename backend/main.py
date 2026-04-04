@@ -12,7 +12,11 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import asyncio
+import threading
+import time
 from graph_engine import K8sGraphEngine
+from ingest import ingest_cluster
 
 # ── App Setup ──────────────────────────────────────
 app = FastAPI(
@@ -34,6 +38,28 @@ DATA_DIR = Path(__file__).parent
 DEFAULT_JSON = DATA_DIR / "mock-cluster-graph.json"
 
 engine = K8sGraphEngine(str(DEFAULT_JSON))
+
+# ── Background Ingestor ────────────────────────────
+
+def run_periodic_ingest(interval: int = 60):
+    """Run the cluster ingestion process every N seconds."""
+    print(f"🚀 Starting background ingestor (interval: {interval}s)...")
+    while True:
+        try:
+            # Run ingestion (this updates cluster-graph.json and returns data)
+            data = ingest_cluster(output_path="cluster-graph.json")
+            
+            # Hot-reload the engine with new data
+            engine.load_graph_from_dict(data)
+            print(f"✅ Auto-ingestion complete. Graph updated at {time.strftime('%H:%M:%S')}")
+        except Exception as e:
+            print(f"❌ Background ingestion error: {e}")
+        
+        time.sleep(interval)
+
+# Start ingestor in a separate thread
+ingest_thread = threading.Thread(target=run_periodic_ingest, daemon=True)
+ingest_thread.start()
 
 
 # ── Request Models ─────────────────────────────────

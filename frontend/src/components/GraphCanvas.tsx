@@ -7,7 +7,9 @@ interface Props {
   links: GraphEdge[];
   highlight: HighlightState;
   onNodeClick: (node: GraphNode) => void;
+  onLinkClick: (link: GraphEdge) => void;
   selectedNode?: GraphNode | null;
+  selectedEdge?: GraphEdge | null;
   isDark: boolean;
 }
 
@@ -52,8 +54,8 @@ const NODE_ICONS: Record<string, string> = {
   networkpolicy: '🚧',
 };
 
-export default function GraphCanvas({ nodes, links, highlight, onNodeClick, selectedNode, isDark }: Props) {
-  const fgRef = useRef<ForceGraphMethods | undefined>();
+export default function GraphCanvas({ nodes, links, highlight, onNodeClick, onLinkClick, selectedNode, selectedEdge, isDark }: Props) {
+  const fgRef = useRef<ForceGraphMethods | undefined>(undefined);
 
   const graphData = useMemo(() => {
     return {
@@ -111,6 +113,10 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, sele
     const isHighlighted = highlight.nodes.size === 0 || highlight.nodes.has(node.id);
     const isOnPath = highlight.path.includes(node.id);
     const isSelected = selectedNode?.id === node.id;
+    const isLinkSelected = selectedEdge && (
+      (typeof selectedEdge.source === 'string' ? selectedEdge.source : (selectedEdge.source as any).id) === node.id ||
+      (typeof selectedEdge.target === 'string' ? selectedEdge.target : (selectedEdge.target as any).id) === node.id
+    );
     const isGroupGlow = 
       (highlight.mode === 'group-critical' && node.risk_level === 'critical') || 
       (highlight.mode === 'group-crown-jewel' && node.risk_level === 'crown-jewel') ||
@@ -119,23 +125,25 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, sele
       (highlight.mode === 'group-low' && node.risk_level === 'low');
 
     // Draw native-colored glowing halo for selected node or filtered group
-    if (isSelected || isGroupGlow) {
+    if (isSelected || isGroupGlow || isLinkSelected) {
       ctx.beginPath();
-      ctx.arc(x, y, size + 6, 0, 2 * Math.PI);
+      ctx.arc(x, y, size + (isSelected || isGroupGlow ? 6 : 4), 0, 2 * Math.PI);
       
       // Use standard transparent base mapping matching the node's true color natively!
-      ctx.globalAlpha = isDark ? 0.35 : 0.25;
+      ctx.globalAlpha = isDark ? (isLinkSelected && !isSelected ? 0.2 : 0.35) : (isLinkSelected && !isSelected ? 0.15 : 0.25);
       ctx.fillStyle = color;
       ctx.fill();
       ctx.globalAlpha = 1.0;
       
       // Add glowing shadow effect tied to the node's specific color
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 20;
+      if (isSelected || isGroupGlow) {
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 20;
+      }
       
       // Apply exact border
       ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = isSelected ? 2 : 1;
       ctx.stroke();
       
       // Reset shadow so it doesn't affect other elements
@@ -184,12 +192,19 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, sele
         : (isDark ? '#475569' : '#94a3b8');
       ctx.fillText(node.label || node.id, x, y + size + 3);
     }
-  }, [getNodeColor, getNodeSize, highlight, isDark, selectedNode]);
+  }, [getNodeColor, getNodeSize, highlight, isDark, selectedNode, selectedEdge]);
 
   const getLinkColor = useCallback((link: { source: GraphNode | string; target: GraphNode | string }) => {
-    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+    const sourceId = typeof link.source === 'string' ? link.source : (link.source as any).id;
+    const targetId = typeof link.target === 'string' ? link.target : (link.target as any).id;
     const edgeKey = `${sourceId}->${targetId}`;
+
+    const isSelected = selectedEdge && (
+      (typeof selectedEdge.source === 'string' ? selectedEdge.source : (selectedEdge.source as any).id) === sourceId &&
+      (typeof selectedEdge.target === 'string' ? selectedEdge.target : (selectedEdge.target as any).id) === targetId
+    );
+
+    if (isSelected) return '#ef4444';
 
     if (highlight.edges.size > 0 && highlight.edges.has(edgeKey)) {
       return '#ef4444';
@@ -202,17 +217,25 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, sele
     }
     // High contrast professional lines (slate-400 equivalent for dark, slate-600 equivalent for light)
     return isDark ? 'rgba(148,163,184,0.75)' : 'rgba(71,85,105,0.8)';
-  }, [highlight, isDark]);
+  }, [highlight, isDark, selectedEdge]);
 
   const getLinkWidth = useCallback((link: { source: GraphNode | string; target: GraphNode | string }) => {
-    const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-    const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+    const sourceId = typeof link.source === 'string' ? link.source : (link.source as any).id;
+    const targetId = typeof link.target === 'string' ? link.target : (link.target as any).id;
     const edgeKey = `${sourceId}->${targetId}`;
+
+    const isSelected = selectedEdge && (
+      (typeof selectedEdge.source === 'string' ? selectedEdge.source : (selectedEdge.source as any).id) === sourceId &&
+      (typeof selectedEdge.target === 'string' ? selectedEdge.target : (selectedEdge.target as any).id) === targetId
+    );
+
+    if (isSelected) return 4;
+
     if (highlight.edges.size > 0 && highlight.edges.has(edgeKey)) {
       return 3;
     }
     return 1;
-  }, [highlight]);
+  }, [highlight, selectedEdge]);
 
   const handleNodeClick = useCallback((node: GraphNode) => {
     onNodeClick(node);
@@ -222,6 +245,10 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, sele
       fg.zoom(2.5, 600);
     }
   }, [onNodeClick]);
+
+  const handleLinkClick = useCallback((link: any) => {
+    onLinkClick(link as GraphEdge);
+  }, [onLinkClick]);
 
   return (
     <div className="graph-container relative w-full h-full">
@@ -244,16 +271,23 @@ export default function GraphCanvas({ nodes, links, highlight, onNodeClick, sele
         linkDirectionalArrowLength={4}
         linkDirectionalArrowRelPos={0.85}
         linkDirectionalParticles={(link: any) => {
-          const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-          const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+          const sourceId = typeof link.source === 'string' ? link.source : (link.source as any).id;
+          const targetId = typeof link.target === 'string' ? link.target : (link.target as any).id;
           const edgeKey = `${sourceId}->${targetId}`;
-          return highlight.edges.has(edgeKey) ? 3 : 0;
+
+          const isSelected = selectedEdge && (
+            (typeof selectedEdge.source === 'string' ? selectedEdge.source : (selectedEdge.source as any).id) === sourceId &&
+            (typeof selectedEdge.target === 'string' ? selectedEdge.target : (selectedEdge.target as any).id) === targetId
+          );
+
+          return (highlight.edges.has(edgeKey) || isSelected) ? 3 : 0;
         }}
         linkDirectionalParticleSpeed={0.006}
         linkDirectionalParticleWidth={3}
         linkDirectionalParticleColor={() => '#ef4444'}
         linkCurvature={0.25}
         onNodeClick={handleNodeClick as any}
+        onLinkClick={handleLinkClick as any}
         backgroundColor={isDark ? '#0a0f1e' : '#f8fafc'}
         cooldownTicks={100}
         onEngineStop={() => fgRef.current?.zoomToFit(400, 40)}

@@ -15,6 +15,14 @@ export interface GraphNode {
   fy?: number | null;
 }
 
+export interface ContainerInfo {
+  name: string;
+  image: string;
+  ports: number[];
+  cves: string[];
+  score?: number;
+}
+
 export interface NodeMetadata {
   description?: string;
   image?: string;
@@ -34,6 +42,9 @@ export interface NodeMetadata {
   rules?: string[];
   service_type?: string;
   enforcement?: string;
+  containers?: ContainerInfo[];
+  uid?: string;
+  name?: string;
   [key: string]: unknown;
 }
 

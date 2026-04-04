@@ -37,6 +37,7 @@ function App() {
 
   // ── UI State ─────────────────────────────
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [highlight, setHighlight] = useState<HighlightState>({
     nodes: new Set(), edges: new Set(), path: [], mode: 'none',
   });
@@ -85,6 +86,7 @@ function App() {
     setPathResult(null);
     setCycleResult(null);
     setCriticalResult(null);
+    setSelectedEdge(null);
   };
 
   // ── Algorithm Handlers ───────────────────
@@ -184,6 +186,7 @@ function App() {
       setLinks(newGraph.links);
       clearHighlight();
       setSelectedNode(null);
+      setSelectedEdge(null);
       setCriticalResult(null);
       flash(result.message, 'success');
     } catch (err: any) {
@@ -201,6 +204,7 @@ function App() {
       setLinks(result.graph.links);
       clearHighlight();
       setSelectedNode(null);
+      setSelectedEdge(null);
       flash('Graph reset to original state', 'success');
     } catch (err: any) {
       flash(err.message, 'error');
@@ -217,6 +221,7 @@ function App() {
       setLinks(result.graph.links);
       clearHighlight();
       setSelectedNode(null);
+      setSelectedEdge(null);
       flash(result.message, 'success');
     } catch (err: any) {
       flash(err.message, 'error');
@@ -226,6 +231,12 @@ function App() {
 
   const handleNodeClick = (node: GraphNode) => {
     setSelectedNode(node);
+    setSelectedEdge(null);
+  };
+
+  const handleLinkClick = (link: GraphEdge) => {
+    setSelectedEdge(link);
+    setSelectedNode(null);
   };
 
   const handleFindPathToNode = (targetId: string) => {
@@ -574,14 +585,20 @@ function App() {
             links={links}
             highlight={highlight}
             onNodeClick={handleNodeClick}
+            onLinkClick={handleLinkClick}
             selectedNode={selectedNode}
+            selectedEdge={selectedEdge}
             isDark={isDark}
           />
 
           {/* Security Sidebar (overlays right side of graph) */}
           <SecuritySidebar
             node={selectedNode}
-            onClose={() => setSelectedNode(null)}
+            edge={selectedEdge}
+            onClose={() => {
+              setSelectedNode(null);
+              setSelectedEdge(null);
+            }}
             onBlastRadius={(nodeId) => handleBlastRadius(nodeId, 3)}
             onFindPath={handleFindPathToNode}
             isDark={isDark}

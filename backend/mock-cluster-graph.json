@@ -41,9 +41,24 @@
       "metadata": {
         "description": "Internet-facing Kubernetes Dashboard — misconfigured with no authentication",
         "image": "kubernetesui/dashboard:v2.7.0",
+        "containers": [
+          {
+            "name": "kubernetes-dashboard",
+            "image": "kubernetesui/dashboard:v2.7.0",
+            "ports": [8443],
+            "cves": ["CVE-2018-18264", "CVE-2023-49797"],
+            "score": 8.1
+          },
+          {
+            "name": "dashboard-metrics-scraper",
+            "image": "kubernetesui/metrics-scraper:v1.0.8",
+            "ports": [8000],
+            "cves": []
+          }
+        ],
         "cves": ["CVE-2018-18264", "CVE-2023-49797"],
         "cvss_scores": [7.5, 8.1],
-        "ports": [8443],
+        "ports": [8443, 8000],
         "labels": {"app": "kubernetes-dashboard", "exposed": "true"},
         "icon": "monitor"
       }
@@ -133,6 +148,14 @@
       "metadata": {
         "description": "Main application API server",
         "image": "company/api-server:3.1.2",
+        "containers": [
+          {
+            "name": "api-server",
+            "image": "company/api-server:3.1.2",
+            "ports": [8080],
+            "cves": ["CVE-2023-44487"]
+          }
+        ],
         "cves": ["CVE-2023-44487"],
         "cvss_scores": [7.5],
         "ports": [8080],
@@ -185,9 +208,23 @@
       "metadata": {
         "description": "Background job worker processing queue messages",
         "image": "company/worker:2.8.0",
+        "containers": [
+          {
+            "name": "worker-main",
+            "image": "company/worker:2.8.0",
+            "ports": [9090],
+            "cves": []
+          },
+          {
+            "name": "sidecar-logger",
+            "image": "fluent/fluentd:v1.16",
+            "ports": [24224],
+            "cves": []
+          }
+        ],
         "cves": [],
         "cvss_scores": [],
-        "ports": [9090],
+        "ports": [9090, 24224],
         "labels": {"app": "worker", "tier": "backend"},
         "icon": "cpu"
       }

@@ -71,20 +71,32 @@ def _pod_to_node(pod: dict) -> dict:
     metadata = pod.get("metadata", {})
     spec = pod.get("spec", {})
     name = metadata.get("name", "unknown-pod")
+    uid = metadata.get("uid", name)
     namespace = metadata.get("namespace", "default")
     labels = metadata.get("labels", {})
 
     containers = spec.get("containers", [])
-    images = [c.get("image", "") for c in containers]
+    container_data = []
     ports = []
+    all_images = []
+
     for c in containers:
-        for p in c.get("ports", []):
-            ports.append(p.get("containerPort", 0))
+        c_name = c.get("name", "")
+        image = c.get("image", "")
+        all_images.append(image)
+        c_ports = [p.get("containerPort", 0) for p in c.get("ports", [])]
+        ports.extend(c_ports)
+        container_data.append({
+            "name": c_name,
+            "image": image,
+            "ports": c_ports,
+            "cves": [], # Placeholder for CVEs
+        })
 
     # Determine risk level based on properties
     risk_level = "low"
     sa_name = spec.get("serviceAccountName", "default")
-    if labels.get("exposed") == "true" or any("dashboard" in img.lower() for img in images):
+    if labels.get("exposed") == "true" or any("dashboard" in img.lower() for img in all_images):
         risk_level = "critical"
     elif namespace in ("kube-system",):
         risk_level = "critical"
@@ -92,20 +104,23 @@ def _pod_to_node(pod: dict) -> dict:
         risk_level = "medium"
 
     return {
-        "id": name,
+        "id": uid,
         "label": labels.get("app", name),
         "type": "pod",
         "namespace": namespace,
         "risk_level": risk_level,
         "metadata": {
-            "description": f"Pod running {', '.join(images[:2]) or 'unknown image'}",
-            "image": images[0] if images else "",
-            "cves": [],  # Will be populated by CVE scorer
+            "name": name,
+            "description": f"Pod running {len(containers)} container(s): {', '.join(all_images[:2])}",
+            "containers": container_data,
+            "images": all_images,
+            "cves": [],  # High-level CVE list for the pod
             "cvss_scores": [],
             "ports": ports,
             "labels": labels,
             "service_account": sa_name,
             "icon": "server",
+            "uid": uid,
         },
     }
 
@@ -114,6 +129,7 @@ def _sa_to_node(sa: dict) -> dict:
     """Convert a K8s ServiceAccount to a graph node."""
     metadata = sa.get("metadata", {})
     name = metadata.get("name", "unknown-sa")
+    uid = metadata.get("uid", name)
     namespace = metadata.get("namespace", "default")
     automount = sa.get("automountServiceAccountToken", True)
 
@@ -122,15 +138,17 @@ def _sa_to_node(sa: dict) -> dict:
         risk_level = "critical"
 
     return {
-        "id": name,
+        "id": uid,
         "label": name,
         "type": "serviceaccount",
         "namespace": namespace,
         "risk_level": risk_level,
         "metadata": {
+            "name": name,
             "description": f"ServiceAccount in {namespace}",
             "automount_token": automount,
             "icon": "user-check" if risk_level == "critical" else "user",
+            "uid": uid,
         },
     }
 
@@ -139,6 +157,7 @@ def _role_to_node(role: dict, is_cluster: bool = False) -> dict:
     """Convert a K8s Role/ClusterRole to a graph node."""
     metadata = role.get("metadata", {})
     name = metadata.get("name", "unknown-role")
+    uid = metadata.get("uid", name)
     namespace = metadata.get("namespace", "cluster-wide") if not is_cluster else "cluster-wide"
     rules = role.get("rules", [])
 
@@ -161,62 +180,80 @@ def _role_to_node(role: dict, is_cluster: bool = False) -> dict:
             risk_level = "medium"
 
     return {
-        "id": name,
+        "id": uid,
         "label": name,
         "type": "clusterrole" if is_cluster else "role",
         "namespace": namespace,
         "risk_level": risk_level,
         "metadata": {
+            "name": name,
             "description": f"{'ClusterRole' if is_cluster else 'Role'} with {len(rules)} rule(s)",
             "rules": rule_summaries,
             "icon": "shield-alert" if risk_level == "critical" else "shield",
+            "uid": uid,
         },
     }
 
 
-def _binding_to_node_and_edges(binding: dict, is_cluster: bool = False) -> tuple[dict, list[dict]]:
+def _binding_to_node_and_edges(binding: dict, resource_resolver: dict, is_cluster: bool = False) -> tuple[dict, list[dict]]:
     """Convert a RoleBinding/ClusterRoleBinding to a node + edges."""
     metadata = binding.get("metadata", {})
     name = metadata.get("name", "unknown-binding")
+    uid = metadata.get("uid", name)
     namespace = metadata.get("namespace", "cluster-wide") if not is_cluster else "cluster-wide"
     role_ref = binding.get("roleRef", {})
     subjects = binding.get("subjects", [])
 
     node = {
-        "id": name,
+        "id": uid,
         "label": name,
         "type": "rolebinding",
         "namespace": namespace,
         "risk_level": "critical" if role_ref.get("name") == "cluster-admin" else "medium",
         "metadata": {
+            "name": name,
             "description": f"{'ClusterRoleBinding' if is_cluster else 'RoleBinding'}",
             "binding_type": "ClusterRoleBinding" if is_cluster else "RoleBinding",
             "icon": "link",
+            "uid": uid,
         },
     }
 
     edges = []
     # Edges from subjects → binding
     for subject in subjects:
-        subject_name = subject.get("name", "")
-        if subject_name:
+        s_kind = subject.get("kind", "Subject")
+        s_name = subject.get("name", "")
+        s_ns = subject.get("namespace", namespace) if not is_cluster else subject.get("namespace", "default")
+        
+        # Resolve subject UID
+        s_key = (s_kind.lower(), s_ns, s_name)
+        s_uid = resource_resolver.get(s_key, s_name)
+
+        if s_name:
             edges.append({
-                "source": subject_name,
-                "target": name,
+                "source": s_uid,
+                "target": uid,
                 "relationship": "bound_by",
                 "weight": 0.5 if role_ref.get("name") == "cluster-admin" else 1.0,
-                "metadata": {"description": f"{subject.get('kind', 'Subject')} bound via {'ClusterRoleBinding' if is_cluster else 'RoleBinding'}"},
+                "metadata": {"description": f"{s_kind} '{s_name}' bound via node"},
             })
 
     # Edge from binding → role
-    role_name = role_ref.get("name", "")
-    if role_name:
+    r_name = role_ref.get("name", "")
+    r_kind = role_ref.get("kind", "Role")
+    r_ns = namespace if r_kind == "Role" else "cluster-wide"
+    
+    r_key = (r_kind.lower(), r_ns, r_name)
+    r_uid = resource_resolver.get(r_key, r_name)
+
+    if r_name:
         edges.append({
-            "source": name,
-            "target": role_name,
+            "source": uid,
+            "target": r_uid,
             "relationship": "grants",
-            "weight": 0.5 if role_name == "cluster-admin" else 1.0,
-            "metadata": {"description": f"Binding grants {role_ref.get('kind', 'Role')}"},
+            "weight": 0.5 if r_name == "cluster-admin" else 1.0,
+            "metadata": {"description": f"Binding grants {r_kind} '{r_name}'"},
         })
 
     return node, edges
@@ -226,6 +263,7 @@ def _secret_to_node(secret: dict) -> dict:
     """Convert a K8s Secret to a graph node."""
     metadata = secret.get("metadata", {})
     name = metadata.get("name", "unknown-secret")
+    uid = metadata.get("uid", name)
     namespace = metadata.get("namespace", "default")
     secret_type = secret.get("type", "Opaque")
     keys = list(secret.get("data", {}).keys()) if "data" in secret else []
@@ -241,16 +279,18 @@ def _secret_to_node(secret: dict) -> dict:
         risk_level = "crown-jewel"
 
     return {
-        "id": name,
+        "id": uid,
         "label": name,
         "type": "secret",
         "namespace": namespace,
         "risk_level": risk_level,
         "metadata": {
+            "name": name,
             "description": f"Secret ({secret_type}) with {len(keys)} key(s)",
             "secret_type": secret_type,
             "keys": keys,
             "icon": "key",
+            "uid": uid,
         },
     }
 
@@ -259,6 +299,7 @@ def _configmap_to_node(cm: dict) -> dict:
     """Convert a K8s ConfigMap to a graph node."""
     metadata = cm.get("metadata", {})
     name = metadata.get("name", "unknown-cm")
+    uid = metadata.get("uid", name)
     namespace = metadata.get("namespace", "default")
     keys = list(cm.get("data", {}).keys()) if "data" in cm else []
 
@@ -267,74 +308,92 @@ def _configmap_to_node(cm: dict) -> dict:
         return None
 
     return {
-        "id": name,
+        "id": uid,
         "label": name,
         "type": "configmap",
         "namespace": namespace,
         "risk_level": "low",
         "metadata": {
+            "name": name,
             "description": f"ConfigMap with {len(keys)} key(s)",
             "keys": keys,
             "icon": "file-text",
+            "uid": uid,
         },
     }
 
 
 # ── Edge builders ─────────────────────────────────────────────
 
-def _build_pod_sa_edges(pods: list[dict]) -> list[dict]:
+def _build_pod_sa_edges(pods: list[dict], resource_resolver: dict) -> list[dict]:
     """Build edges from pods to their service accounts."""
     edges = []
     for pod in pods:
+        p_meta = pod.get("metadata", {})
+        p_name = p_meta.get("name", "")
+        p_ns = p_meta.get("namespace", "default")
+        p_uid = p_meta.get("uid", p_name)
+        
         spec = pod.get("spec", {})
-        pod_name = pod.get("metadata", {}).get("name", "")
         sa_name = spec.get("serviceAccountName", "default")
-        if pod_name and sa_name and sa_name != "default":
+        
+        # Resolve ServiceAccount UID
+        sa_key = ("serviceaccount", p_ns, sa_name)
+        sa_uid = resource_resolver.get(sa_key, str(sa_name))
+        
+        if p_uid and sa_uid and sa_name != "default":
             edges.append({
-                "source": pod_name,
-                "target": sa_name,
+                "source": p_uid,
+                "target": sa_uid,
                 "relationship": "uses_service_account",
                 "weight": 0.5,
-                "metadata": {"description": f"Pod mounts ServiceAccount '{sa_name}' token"},
+                "metadata": {"description": f"Pod '{p_name}' mounts ServiceAccount '{sa_name}'"},
             })
     return edges
 
 
-def _build_role_secret_edges(roles: list[dict], secrets: list[dict]) -> list[dict]:
+def _build_role_secret_edges(roles: list[dict], secrets: list[dict], resource_resolver: dict) -> list[dict]:
     """Build edges from roles that can read secrets to those secret nodes."""
     edges = []
-    secret_names = {s.get("metadata", {}).get("name") for s in secrets if s.get("metadata", {}).get("name")}
+    
+    # Map for secrets in each namespace
+    ns_secrets = {}
+    for s in secrets:
+        metadata = s.get("metadata", {})
+        ns = metadata.get("namespace", "default")
+        name = metadata.get("name", "")
+        uid = metadata.get("uid", name)
+        if ns not in ns_secrets:
+            ns_secrets[ns] = []
+        ns_secrets[ns].append((name, uid))
 
     for role in roles:
-        role_name = role.get("metadata", {}).get("name", "")
+        r_meta = role.get("metadata", {})
+        r_name = r_meta.get("name", "")
+        r_ns = r_meta.get("namespace", "cluster-wide")
+        r_uid = r_meta.get("uid", r_name)
+        
         rules = role.get("rules", [])
         for rule in rules:
             resources = rule.get("resources", [])
             verbs = rule.get("verbs", [])
             if ("secrets" in resources or "*" in resources) and any(v in verbs for v in ("get", "list", "*")):
-                # This role can access secrets
                 resource_names = rule.get("resourceNames", [])
-                if resource_names:
-                    # Specific secrets
-                    for sname in resource_names:
-                        if sname in secret_names:
+                
+                # Determine which namespaces to check
+                target_namespaces = [r_ns] if r_ns != "cluster-wide" else ns_secrets.keys()
+                
+                for ns in target_namespaces:
+                    if ns not in ns_secrets: continue
+                    for s_name, s_uid in ns_secrets[ns]:
+                        if not resource_names or s_name in resource_names:
                             edges.append({
-                                "source": role_name,
-                                "target": sname,
+                                "source": r_uid,
+                                "target": s_uid,
                                 "relationship": "can_access",
                                 "weight": 1.0,
-                                "metadata": {"description": f"Role can read secret '{sname}'"},
+                                "metadata": {"description": f"Role can read secret '{s_name}'"},
                             })
-                else:
-                    # All secrets in namespace
-                    for sname in secret_names:
-                        edges.append({
-                            "source": role_name,
-                            "target": sname,
-                            "relationship": "can_access",
-                            "weight": 1.0,
-                            "metadata": {"description": f"Role can read all secrets in namespace"},
-                        })
     return edges
 
 
@@ -394,10 +453,28 @@ def ingest_cluster(output_path: str = "cluster-graph.json", live_cve: bool = Fal
     configmaps = _fetch_resource("configmaps")
     print(f"    Found {len(configmaps)} configmaps")
 
-    # Build nodes
+    # Build nodes and populate resolver map
     print("\n🔨 Building graph nodes...")
     nodes = []
     all_node_ids = set()
+    resource_resolver = {} # (kind, namespace, name) -> uid
+
+    def add_to_resolver(items, kind):
+        for item in items:
+            m = item.get("metadata", {})
+            ns = m.get("namespace", "default") if kind not in ["clusterrole", "clusterrolebinding"] else "cluster-wide"
+            name = m.get("name", "")
+            uid = m.get("uid", name)
+            resource_resolver[(kind, ns, name)] = uid
+
+    add_to_resolver(pods, "pod")
+    add_to_resolver(service_accounts, "serviceaccount")
+    add_to_resolver(roles, "role")
+    add_to_resolver(cluster_roles, "clusterrole")
+    add_to_resolver(secrets, "secret")
+    add_to_resolver(configmaps, "configmap")
+    add_to_resolver(role_bindings, "rolebinding")
+    add_to_resolver(cluster_role_bindings, "clusterrolebinding")
 
     # Add internet entry point
     nodes.append({
@@ -451,18 +528,18 @@ def ingest_cluster(output_path: str = "cluster-graph.json", live_cve: bool = Fal
     edges = []
 
     # Pod → ServiceAccount edges
-    edges.extend(_build_pod_sa_edges(pods))
+    edges.extend(_build_pod_sa_edges(pods, resource_resolver))
 
     # RoleBinding / ClusterRoleBinding → node + edge extraction
     for rb in role_bindings:
-        node, binding_edges = _binding_to_node_and_edges(rb, is_cluster=False)
+        node, binding_edges = _binding_to_node_and_edges(rb, resource_resolver, is_cluster=False)
         if node["id"] not in all_node_ids:
             nodes.append(node)
             all_node_ids.add(node["id"])
         edges.extend(binding_edges)
 
     for crb in cluster_role_bindings:
-        node, binding_edges = _binding_to_node_and_edges(crb, is_cluster=True)
+        node, binding_edges = _binding_to_node_and_edges(crb, resource_resolver, is_cluster=True)
         if node["id"] not in all_node_ids:
             nodes.append(node)
             all_node_ids.add(node["id"])
@@ -470,7 +547,7 @@ def ingest_cluster(output_path: str = "cluster-graph.json", live_cve: bool = Fal
 
     # Role → Secret edges
     all_roles = roles + cluster_roles
-    edges.extend(_build_role_secret_edges(all_roles, secrets))
+    edges.extend(_build_role_secret_edges(all_roles, secrets, resource_resolver))
 
     # Filter edges to only reference existing nodes
     edges = [e for e in edges if e["source"] in all_node_ids and e["target"] in all_node_ids]
@@ -478,14 +555,43 @@ def ingest_cluster(output_path: str = "cluster-graph.json", live_cve: bool = Fal
     # Annotate CVEs using the scorer
     print("🛡️  Scoring CVEs...")
     for node in nodes:
-        cves = node.get("metadata", {}).get("cves", [])
-        if cves:
-            node["metadata"]["cvss_scores"] = [
-                score_cve(cve, live=live_cve)["cvss"] for cve in cves
-            ]
-            risk = compute_node_risk_score(cves, live=live_cve)
-            if risk > 8.0 and node["risk_level"] not in ("crown-jewel", "entry-point"):
-                node["risk_level"] = "critical"
+        if node["type"] == "pod" and "containers" in node.get("metadata", {}):
+            pod_cves = set()
+            container_scores = []
+            
+            for container in node["metadata"]["containers"]:
+                c_cves = container.get("cves", [])
+                if c_cves:
+                    cve_scores = [score_cve(cve, live=live_cve)["cvss"] for cve in c_cves]
+                    c_risk = max(cve_scores) if cve_scores else 0.0
+                    container["score"] = c_risk
+                    container_scores.append(c_risk)
+                    pod_cves.update(c_cves)
+            
+            if container_scores:
+                container_scores.sort(reverse=True)
+                # Compound Risk Formula: Highest container score + 10% of sum of other container scores
+                pod_risk = container_scores[0] + 0.1 * sum(container_scores[1:])
+                node["metadata"]["pod_risk_score"] = round(pod_risk, 2)
+                
+                # Top-level CVEs
+                node["metadata"]["cves"] = list(pod_cves)
+                node["metadata"]["cvss_scores"] = [score_cve(cve, live=live_cve)["cvss"] for cve in node["metadata"]["cves"]]
+                
+                if pod_risk > 8.0 and node["risk_level"] not in ("crown-jewel", "entry-point"):
+                    node["risk_level"] = "critical"
+                elif pod_risk > 6.0 and node["risk_level"] not in ("crown-jewel", "entry-point", "critical"):
+                    node["risk_level"] = "high"
+        else:
+            cves = node.get("metadata", {}).get("cves", [])
+            if cves:
+                node["metadata"]["cvss_scores"] = [
+                    score_cve(cve, live=live_cve)["cvss"] for cve in cves
+                ]
+                risk = compute_node_risk_score(cves, live=live_cve)
+                node["metadata"]["pod_risk_score"] = risk
+                if risk > 8.0 and node["risk_level"] not in ("crown-jewel", "entry-point"):
+                    node["risk_level"] = "critical"
 
     # Build the final graph document
     graph_data = {
