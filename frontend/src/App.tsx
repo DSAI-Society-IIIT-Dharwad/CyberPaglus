@@ -382,7 +382,7 @@ function App() {
           </motion.div>
           <div>
             <h1 className={`text-lg font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-              KubePathAudit
+              KubeInsights
             </h1>
             <p className={`text-[11px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
               Kubernetes Security Analysis Dashboard
