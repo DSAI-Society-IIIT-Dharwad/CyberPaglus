@@ -83,6 +83,13 @@ class SaveSnapshotRequest(BaseModel):
 
 
 # ── Endpoints ──────────────────────────────────────
+@app.get("/")
+def read_root():
+    return {
+        "message": "🚀 KubeInsights API is Online",
+        "docs": "/docs",
+        "health": "/api/health"
+    }
 
 @app.get("/api/health")
 def health_check():
