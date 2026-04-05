@@ -18,12 +18,12 @@ import type {
 function App() {
   // ── Theme ────────────────────────────────
   const [isDark, setIsDark] = useState(() => {
-    const saved = localStorage.getItem('kubepathaudit-theme');
+    const saved = localStorage.getItem('kubeinsights-theme');
     return saved ? saved === 'dark' : true;
   });
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDark);
-    localStorage.setItem('kubepathaudit-theme', isDark ? 'dark' : 'light');
+    localStorage.setItem('kubeinsights-theme', isDark ? 'dark' : 'light');
   }, [isDark]);
 
   // ── Graph State ──────────────────────────
@@ -328,7 +328,7 @@ function App() {
           >
             <Shield className={`w-16 h-16 mx-auto ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
           </motion.div>
-          <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>KubePathAudit</h1>
+          <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>KubeInsights</h1>
           <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Connecting to analysis engine...</p>
           <Loader2 className={`w-5 h-5 mx-auto animate-spin ${isDark ? 'text-blue-400' : 'text-blue-600'}`} />
         </motion.div>

@@ -1,5 +1,5 @@
-﻿"""
-K8sGraphEngine ΓÇö Core graph analytics engine for KubePathAudit.
+"""
+K8sGraphEngine — Core graph analytics engine for KubeInsights.
 Uses NetworkX to build and analyze Kubernetes cluster attack graphs.
 """
 

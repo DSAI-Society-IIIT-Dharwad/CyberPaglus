@@ -225,7 +225,7 @@ def lookup_cve_live(cve_id: str) -> Optional[dict]:
     """
     url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?cveId={cve_id}"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "KubePathAudit/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "KubeInsights/1.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
 

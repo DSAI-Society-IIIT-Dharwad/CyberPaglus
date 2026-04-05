@@ -1,5 +1,5 @@
 """
-KubePathAudit — FastAPI Backend
+KubeInsights — FastAPI Backend
 REST API for Kubernetes cluster security analysis.
 """
 
@@ -83,7 +83,7 @@ class RemediateRequest(BaseModel):
 def health_check():
     return {
         "status": "healthy",
-        "service": "KubePathAudit API",
+        "service": "KubeInsights API",
         "version": "1.0.0",
         "graph_loaded": engine.graph.number_of_nodes() > 0,
         "nodes": engine.graph.number_of_nodes(),
