@@ -24,7 +24,4 @@ services:
     rootDir: frontend
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: kubeinsights-api
-          property: host
+        value: https://kubeinsights-api.onrender.com
