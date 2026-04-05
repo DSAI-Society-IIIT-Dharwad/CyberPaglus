@@ -60,6 +60,12 @@ export default function SecuritySidebar({ node, edge, criticalPath, onClose, onB
     }
   }, [copied]);
 
+  // Force reset state when node changes (even with key refresh, this is extra safety)
+  useEffect(() => {
+    setAiSuggestion(null);
+    setIsAiLoading(false);
+  }, [node?.id]);
+
   const handleAskAI = async (nodeId: string) => {
     if (isAiLoading) return;
     setIsAiLoading(true);

@@ -6577,6 +6577,40 @@ python cli.py diff --input cluster-graph.json
 ```
 ```
 
+## render.yaml
+
+```
+services:
+  # ── Backend: Python FastAPI Web Service ──
+  - type: web
+    name: kubeinsights-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app
+    rootDir: backend
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: GEMINI_API_KEY
+        sync: false # Must be set manually in Render Dashboard
+      - key: PORT
+        value: 8000
+
+  # ── Frontend: React Static Site ──
+  - type: static
+    name: kubeinsights-ui
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishDir: dist
+    rootDir: frontend
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: kubeinsights-api
+          property: host
+```
+
 ## test_output.txt
 
 ```
@@ -15788,6 +15822,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import os
 import asyncio
 import threading
 import time
@@ -16295,7 +16330,8 @@ async def export_pdf():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 ```
 
 ## backend\mock-cluster-graph.json
@@ -16432,6 +16468,7 @@ python-multipart==0.0.9
 reportlab==4.2.5
 python-dotenv==1.0.1
 google-genai==1.3.0
+gunicorn==23.0.0
 ```
 
 ## backend\run_live_test.ps1
@@ -25136,6 +25173,7 @@ function App() {
   const [cycleResult, setCycleResult] = useState<CycleResult | null>(null);
   const [criticalResult, setCriticalResult] = useState<CriticalNodeResult | null>(null);
   const [topCriticalResult, setTopCriticalResult] = useState<TopCriticalPathResult | null>(null);
+  const [sidebarKey, setSidebarKey] = useState(0);
 
   // ── Graph container sizing ───────────────
   const graphContainerRef = useRef<HTMLDivElement>(null);
@@ -25182,16 +25220,31 @@ function App() {
     setTimeout(() => setStatusMessage(null), 4000);
   };
 
+  // Global Escape & Click-away handling
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedNode(null);
+        setSelectedEdge(null);
+        setSelectedCriticalPath(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // ── Clear Highlights ─────────────────────
   const clearHighlight = () => {
     setHighlight({ nodes: new Set(), edges: new Set(), path: [], mode: 'none' });
-    setHoveredNode(null);
-    setHoverHighlight({ nodes: new Set(), edges: new Set() });
+    setSelectedCriticalPath(null);
+    setSelectedNode(null);
+    setSelectedEdge(null);
+    setTopCriticalResult(null);
     setBlastResult(null);
     setPathResult(null);
     setCycleResult(null);
     setCriticalResult(null);
-    setSelectedEdge(null);
+    setSelectedNode(null);
     setTopCriticalResult(null);
     setSelectedCriticalPath(null);
   };
@@ -25371,6 +25424,16 @@ function App() {
     flash(`Critical path selected: ${path.rank} (${path.difficulty})`, 'info');
   };
 
+  const handleNodeClick = (node: any) => {
+    // We spread the node object to ensure a fresh reference.
+    // This forces React to trigger a re-render even if the node identity is technically the same,
+    // solving the 're-selection' bug where clicking the same node again wouldn't re-open the sidebar.
+    setSidebarKey(prev => prev + 1);
+    setSelectedNode({ ...node });
+    setSelectedEdge(null);
+    setSelectedCriticalPath(null);
+  };
+
   const handleRemediate = async (nodeId: string) => {
     setApiLoading(true);
     try {
@@ -25419,7 +25482,6 @@ function App() {
       setLinks(result.graph.links);
       clearHighlight();
       setSelectedNode(null);
-      setSelectedNode(null);
       setSelectedEdge(null);
       setTopCriticalResult(null);
       setSelectedCriticalPath(null);
@@ -25430,10 +25492,6 @@ function App() {
     setApiLoading(false);
   };
 
-  const handleNodeClick = (node: GraphNode) => {
-    setSelectedNode(node);
-    setSelectedEdge(null);
-  };
 
   const handleLinkClick = (link: GraphEdge) => {
     setSelectedEdge(link);
@@ -25747,6 +25805,15 @@ function App() {
                 {highlight.mode === 'shortest-path' && 'Attack Path Active'}
                 {highlight.mode === 'cycles' && 'Cycles Highlighted'}
                 {highlight.mode === 'critical-node' && 'Critical Node Highlighted'}
+                {highlight.mode === 'top-critical-paths' && 'Top Critical Paths'}
+                {highlight.mode === 'group-critical' && 'Critical Risks Filter'}
+                {highlight.mode === 'group-crown-jewel' && 'Crown Jewels Filter'}
+                {highlight.mode === 'group-entry-point' && 'Entry Points Filter'}
+                {/* Fallback for any missed modes */}
+                {![
+                  'blast-radius', 'shortest-path', 'cycles', 'critical-node',
+                  'top-critical-paths', 'group-critical', 'group-crown-jewel', 'group-entry-point'
+                ].includes(highlight.mode) && `Active: ${highlight.mode.replace('-', ' ')}`}
                 <span className="ml-1">✕</span>
               </motion.button>
             )}
@@ -25825,12 +25892,17 @@ function App() {
             hoveredNode={hoveredNode}
             hoverHighlight={hoverHighlight}
             onNodeHover={handleNodeHover}
+            onBackgroundClick={() => {
+              setSelectedNode(null);
+              setSelectedEdge(null);
+            }}
             isDark={isDark}
             showMitre={showMitre}
           />
 
           {/* Security Sidebar (overlays right side of graph) */}
           <SecuritySidebar
+            key={`sidebar-${sidebarKey}`}
             node={selectedNode}
             edge={selectedEdge}
             criticalPath={selectedCriticalPath}
@@ -26916,6 +26988,7 @@ interface Props {
   hoveredNode?: GraphNode | null;
   hoverHighlight?: { nodes: Set<string>; edges: Set<string> };
   onNodeHover?: (node: GraphNode | null) => void;
+  onBackgroundClick?: () => void;
   isDark: boolean;
   showMitre: boolean;
 }
@@ -26964,7 +27037,7 @@ const NODE_ICONS: Record<string, string> = {
 
 export default function GraphCanvas({ 
   nodes, links, highlight, onNodeClick, onLinkClick, 
-  selectedNode, selectedEdge, hoveredNode, hoverHighlight, onNodeHover, isDark, showMitre
+  selectedNode, selectedEdge, hoveredNode, hoverHighlight, onNodeHover, onBackgroundClick, isDark, showMitre
 }: Props) {
   const fgRef = useRef<ForceGraphMethods | null>(null);
 
@@ -27182,7 +27255,8 @@ export default function GraphCanvas({
         nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
           const size = baseSizeForNode(node);
           ctx.beginPath();
-          ctx.arc(node.x ?? 0, node.y ?? 0, size + 6, 0, 2 * Math.PI);
+          // Extremely generous hit-box to prevent 'missed' clicks
+          ctx.arc(node.x ?? 0, node.y ?? 0, size + 12, 0, 2 * Math.PI);
           ctx.fillStyle = color;
           ctx.fill();
         }}
@@ -27205,6 +27279,7 @@ export default function GraphCanvas({
         onNodeHover={(node: any) => onNodeHover?.(node)}
         onNodeClick={(node: any) => onNodeClick(node)}
         onLinkClick={(link: any) => onLinkClick(link as GraphEdge)}
+        onBackgroundClick={() => onBackgroundClick?.()}
         nodeLabel={(node: any) => node ? `
           <div class="cyber-tooltip">
             <div class="flex items-center gap-2 mb-1">
@@ -27551,6 +27626,12 @@ export default function SecuritySidebar({ node, edge, criticalPath, onClose, onB
       return () => clearTimeout(timer);
     }
   }, [copied]);
+
+  // Force reset state when node changes (even with key refresh, this is extra safety)
+  useEffect(() => {
+    setAiSuggestion(null);
+    setIsAiLoading(false);
+  }, [node?.id]);
 
   const handleAskAI = async (nodeId: string) => {
     if (isAiLoading) return;
@@ -28630,7 +28711,7 @@ import type {
   TopCriticalPathResult,
 } from './types';
 
-const BASE_URL = '/api';
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${url}`, {

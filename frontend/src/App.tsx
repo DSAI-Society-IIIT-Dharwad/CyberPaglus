@@ -58,6 +58,7 @@ function App() {
   const [cycleResult, setCycleResult] = useState<CycleResult | null>(null);
   const [criticalResult, setCriticalResult] = useState<CriticalNodeResult | null>(null);
   const [topCriticalResult, setTopCriticalResult] = useState<TopCriticalPathResult | null>(null);
+  const [sidebarKey, setSidebarKey] = useState(0);
 
   // ── Graph container sizing ───────────────
   const graphContainerRef = useRef<HTMLDivElement>(null);
@@ -104,16 +105,31 @@ function App() {
     setTimeout(() => setStatusMessage(null), 4000);
   };
 
+  // Global Escape & Click-away handling
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedNode(null);
+        setSelectedEdge(null);
+        setSelectedCriticalPath(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // ── Clear Highlights ─────────────────────
   const clearHighlight = () => {
     setHighlight({ nodes: new Set(), edges: new Set(), path: [], mode: 'none' });
-    setHoveredNode(null);
-    setHoverHighlight({ nodes: new Set(), edges: new Set() });
+    setSelectedCriticalPath(null);
+    setSelectedNode(null);
+    setSelectedEdge(null);
+    setTopCriticalResult(null);
     setBlastResult(null);
     setPathResult(null);
     setCycleResult(null);
     setCriticalResult(null);
-    setSelectedEdge(null);
+    setSelectedNode(null);
     setTopCriticalResult(null);
     setSelectedCriticalPath(null);
   };
@@ -293,6 +309,16 @@ function App() {
     flash(`Critical path selected: ${path.rank} (${path.difficulty})`, 'info');
   };
 
+  const handleNodeClick = (node: any) => {
+    // We spread the node object to ensure a fresh reference.
+    // This forces React to trigger a re-render even if the node identity is technically the same,
+    // solving the 're-selection' bug where clicking the same node again wouldn't re-open the sidebar.
+    setSidebarKey(prev => prev + 1);
+    setSelectedNode({ ...node });
+    setSelectedEdge(null);
+    setSelectedCriticalPath(null);
+  };
+
   const handleRemediate = async (nodeId: string) => {
     setApiLoading(true);
     try {
@@ -341,7 +367,6 @@ function App() {
       setLinks(result.graph.links);
       clearHighlight();
       setSelectedNode(null);
-      setSelectedNode(null);
       setSelectedEdge(null);
       setTopCriticalResult(null);
       setSelectedCriticalPath(null);
@@ -352,10 +377,6 @@ function App() {
     setApiLoading(false);
   };
 
-  const handleNodeClick = (node: GraphNode) => {
-    setSelectedNode(node);
-    setSelectedEdge(null);
-  };
 
   const handleLinkClick = (link: GraphEdge) => {
     setSelectedEdge(link);
@@ -669,6 +690,15 @@ function App() {
                 {highlight.mode === 'shortest-path' && 'Attack Path Active'}
                 {highlight.mode === 'cycles' && 'Cycles Highlighted'}
                 {highlight.mode === 'critical-node' && 'Critical Node Highlighted'}
+                {highlight.mode === 'top-critical-paths' && 'Top Critical Paths'}
+                {highlight.mode === 'group-critical' && 'Critical Risks Filter'}
+                {highlight.mode === 'group-crown-jewel' && 'Crown Jewels Filter'}
+                {highlight.mode === 'group-entry-point' && 'Entry Points Filter'}
+                {/* Fallback for any missed modes */}
+                {![
+                  'blast-radius', 'shortest-path', 'cycles', 'critical-node',
+                  'top-critical-paths', 'group-critical', 'group-crown-jewel', 'group-entry-point'
+                ].includes(highlight.mode) && `Active: ${highlight.mode.replace('-', ' ')}`}
                 <span className="ml-1">✕</span>
               </motion.button>
             )}
@@ -747,12 +777,17 @@ function App() {
             hoveredNode={hoveredNode}
             hoverHighlight={hoverHighlight}
             onNodeHover={handleNodeHover}
+            onBackgroundClick={() => {
+              setSelectedNode(null);
+              setSelectedEdge(null);
+            }}
             isDark={isDark}
             showMitre={showMitre}
           />
 
           {/* Security Sidebar (overlays right side of graph) */}
           <SecuritySidebar
+            key={`sidebar-${sidebarKey}`}
             node={selectedNode}
             edge={selectedEdge}
             criticalPath={selectedCriticalPath}

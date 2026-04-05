@@ -1,0 +1,29 @@
+services:
+  # ── Backend: Python FastAPI Web Service ──
+  - type: web
+    name: kubeinsights-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app
+    rootDir: backend
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: GEMINI_API_KEY
+        sync: false # Must be set manually in Render Dashboard
+      - key: PORT
+        value: 8000
+
+  # ── Frontend: React Static Site ──
+  - type: static
+    name: kubeinsights-ui
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishDir: dist
+    rootDir: frontend
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: kubeinsights-api
+          property: host

@@ -13,6 +13,7 @@ interface Props {
   hoveredNode?: GraphNode | null;
   hoverHighlight?: { nodes: Set<string>; edges: Set<string> };
   onNodeHover?: (node: GraphNode | null) => void;
+  onBackgroundClick?: () => void;
   isDark: boolean;
   showMitre: boolean;
 }
@@ -61,7 +62,7 @@ const NODE_ICONS: Record<string, string> = {
 
 export default function GraphCanvas({ 
   nodes, links, highlight, onNodeClick, onLinkClick, 
-  selectedNode, selectedEdge, hoveredNode, hoverHighlight, onNodeHover, isDark, showMitre
+  selectedNode, selectedEdge, hoveredNode, hoverHighlight, onNodeHover, onBackgroundClick, isDark, showMitre
 }: Props) {
   const fgRef = useRef<ForceGraphMethods | null>(null);
 
@@ -279,7 +280,8 @@ export default function GraphCanvas({
         nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
           const size = baseSizeForNode(node);
           ctx.beginPath();
-          ctx.arc(node.x ?? 0, node.y ?? 0, size + 6, 0, 2 * Math.PI);
+          // Extremely generous hit-box to prevent 'missed' clicks
+          ctx.arc(node.x ?? 0, node.y ?? 0, size + 12, 0, 2 * Math.PI);
           ctx.fillStyle = color;
           ctx.fill();
         }}
@@ -302,6 +304,7 @@ export default function GraphCanvas({
         onNodeHover={(node: any) => onNodeHover?.(node)}
         onNodeClick={(node: any) => onNodeClick(node)}
         onLinkClick={(link: any) => onLinkClick(link as GraphEdge)}
+        onBackgroundClick={() => onBackgroundClick?.()}
         nodeLabel={(node: any) => node ? `
           <div class="cyber-tooltip">
             <div class="flex items-center gap-2 mb-1">
