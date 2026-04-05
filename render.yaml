@@ -2,7 +2,7 @@ services:
   # ── Backend: Python FastAPI Web Service ──
   - type: web
     name: kubeinsights-api
-    env: python
+    runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app
     rootDir: backend
@@ -15,11 +15,11 @@ services:
         value: 8000
 
   # ── Frontend: React Static Site ──
-  - type: static
+  - type: web
     name: kubeinsights-ui
-    env: static
+    runtime: static
     buildCommand: npm install && npm run build
-    staticPublishDir: dist
+    staticPublishPath: dist
     rootDir: frontend
     envVars:
       - key: VITE_API_URL
