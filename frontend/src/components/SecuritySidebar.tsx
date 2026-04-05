@@ -1,8 +1,10 @@
+import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, AlertTriangle, Database, Key, Server, Globe, Link2, User,
   Cpu, Activity, HardDrive, FileText, ShieldOff, ShieldAlert, Network, Monitor,
-  X, Crosshair, Route, ChevronRight, Zap
+  X, Crosshair, Route, ChevronRight, Zap, Lightbulb, Loader2
 } from 'lucide-react';
 import type { GraphNode, GraphEdge, TopCriticalPath } from '@/lib/types';
 
@@ -46,6 +48,35 @@ const RISK_BADGE: Record<string, { bg: string; text: string; label: string }> = 
 };
 
 export default function SecuritySidebar({ node, edge, criticalPath, onClose, onBlastRadius, onFindPath, isDark }: Props) {
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+
+  const handleAskAI = async (nodeId: string) => {
+    if (isAiLoading) return;
+    setIsAiLoading(true);
+    setAiSuggestion(null);
+    try {
+      const res = await fetch('http://localhost:8000/api/ai-remediation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ node_id: nodeId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to fetch AI advice');
+      setAiSuggestion(data.advice);
+    } catch (err: any) {
+      setAiSuggestion(`❌ **Error:** ${err.message}`);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    setAiSuggestion(null);
+    setIsAiLoading(false);
+    onClose();
+  };
+
   if (!node && !edge && !criticalPath) return null;
 
   // If showing critical path
@@ -81,7 +112,7 @@ export default function SecuritySidebar({ node, edge, criticalPath, onClose, onB
                 </div>
               </div>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
               >
                 <X className="w-4 h-4" />
@@ -239,7 +270,7 @@ export default function SecuritySidebar({ node, edge, criticalPath, onClose, onB
                 </div>
               </div>
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
               >
                 <X className="w-4 h-4" />
@@ -454,7 +485,53 @@ export default function SecuritySidebar({ node, edge, criticalPath, onClose, onB
                 </span>
                 <ChevronRight className="w-4 h-4" />
               </button>
+              <button
+                onClick={() => handleAskAI(node.id)}
+                disabled={isAiLoading}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all
+                  ${isDark 
+                    ? 'bg-indigo-900/40 text-indigo-300 hover:bg-indigo-800/60 border border-indigo-700/50' 
+                    : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'}
+                  hover:shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <span className="flex items-center gap-2">
+                  {isAiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lightbulb className="w-4 h-4" />}
+                  {isAiLoading ? 'Analyzing Context...' : 'Ask AI Advisor'}
+                </span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
+
+            {/* AI Suggestion Box */}
+            <AnimatePresence>
+              {aiSuggestion && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className={`mt-4 p-4 rounded-xl border z-20 relative overflow-hidden
+                    ${isDark ? 'bg-indigo-950/40 border-indigo-500/30' : 'bg-indigo-50/80 border-indigo-200'} shadow-lg backdrop-blur-md`}
+                >
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-3xl rounded-full" />
+                  <div className="absolute bottom-0 left-0 w-24 h-24 bg-purple-500/10 blur-2xl rounded-full" />
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Lightbulb className={`w-4 h-4 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
+                      <h4 className={`text-sm font-bold ${isDark ? 'text-indigo-300' : 'text-indigo-800'}`}>
+                        AI Remediation Strategy
+                      </h4>
+                    </div>
+                    <button onClick={() => setAiSuggestion(null)} className="text-indigo-400 hover:text-indigo-300"><X className="w-4 h-4" /></button>
+                  </div>
+                  <div className={`text-sm prose prose-sm max-w-none 
+                    ${isDark ? 'prose-invert prose-p:text-indigo-200/90 prose-li:text-indigo-200/90 prose-strong:text-indigo-100' : 'prose-p:text-indigo-900 prose-li:text-indigo-900 prose-strong:text-indigo-800'}
+                    pointer-events-auto`}
+                  >
+                    <ReactMarkdown>{aiSuggestion}</ReactMarkdown>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </motion.div>
       </AnimatePresence>

@@ -142,6 +142,33 @@ def remediate(req: RemediateRequest):
     return result
 
 
+@app.post("/api/ai-remediation")
+def ai_remediation(req: RemediateRequest):
+    """Get context-aware AI remediation advice for a specific node."""
+    node_data = None
+    for n, data in engine.graph.nodes(data=True):
+        if n == req.node_id:
+            node_data = dict(data)
+            node_data["id"] = n
+            break
+
+    if not node_data:
+        raise HTTPException(status_code=404, detail="Node not found.")
+
+    edges_data = []
+    import networkx as nx
+    for u, v, data in engine.graph.edges(req.node_id, data=True):
+        edges_data.append({"source": u, "target": v, "relationship": data.get("relationship", "unknown")})
+    
+    if isinstance(engine.graph, nx.DiGraph):
+        for u, v, data in engine.graph.in_edges(req.node_id, data=True):
+            edges_data.append({"source": u, "target": v, "relationship": data.get("relationship", "unknown")})
+
+    import ai_advisor
+    advice = ai_advisor.get_remediation_advice(node_data, edges_data)
+    return {"advice": advice}
+
+
 @app.post("/api/reset")
 def reset_graph():
     """Reset the graph to its original state."""

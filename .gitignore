@@ -1,0 +1,66 @@
+# Sensitive files
+.env
+*.env
+
+# Python
+__pycache__/
+.venv/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Node / JS
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.history/
+
+# Project Specific Exclusions (requested by user)
+backend/checklist/
+checklist/
+IMPLEMENTATION_CHECKLIST.md
+test_output.txt
+backend/e2e_results.txt
+backend/test_results.txt
+backend/test_output.txt
+backend/attack_report.pdf
+backend/kill-chain-report.pdf
+backend/snapshots/
