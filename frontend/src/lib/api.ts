@@ -7,7 +7,11 @@ import type {
   TopCriticalPathResult,
 } from './types';
 
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+let VITE_API_URL = import.meta.env.VITE_API_URL || '/api';
+if (VITE_API_URL && !VITE_API_URL.startsWith('http') && !VITE_API_URL.startsWith('/')) {
+  VITE_API_URL = `https://${VITE_API_URL}/api`;
+}
+const BASE_URL = VITE_API_URL;
 
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${url}`, {
