@@ -197,21 +197,20 @@ export default function GraphCanvas({
     const isFaded = (highlight?.edges && highlight.edges.size > 0 && !isAnalysis) || 
                     (hoveredNode && !isHover);
 
-    let color = isDark ? 'rgba(148,163,184,0.2)' : 'rgba(71,85,105,0.3)';
-    let width = 1.2;
+    let color = isDark ? 'rgba(34, 211, 238, 0.4)' : 'rgba(2, 132, 199, 0.4)'; // bright cyan/blue
+    let width = 1.5;
 
     if (isAnalysis) { color = '#ef4444'; width = 3.5; }
-    else if (isHover) { color = '#22d3ee'; width = 2.5; }
-    else if (isFaded) { color = isDark ? 'rgba(30,41,59,0.05)' : 'rgba(203,213,225,0.1)'; }
+    else if (isHover) { color = '#a855f7'; width = 2.5; } // distinct hover color
+    else if (isFaded) { color = isDark ? 'rgba(30,41,59,0.1)' : 'rgba(203,213,225,0.2)'; }
 
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
     ctx.lineTo(end.x, end.y);
     
-    if (isAnalysis || isHover) {
-      ctx.shadowColor = color;
-      ctx.shadowBlur = isAnalysis ? 12 : 8;
-    }
+    // Always give edges a subtle neon glow
+    ctx.shadowColor = color;
+    ctx.shadowBlur = isAnalysis ? 12 : (isHover ? 8 : 4);
     
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
