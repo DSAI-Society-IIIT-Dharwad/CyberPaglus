@@ -18,7 +18,6 @@ services:
   - type: web
     name: kubeinsights-ui
     runtime: static
-    plan: free
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     rootDir: frontend
