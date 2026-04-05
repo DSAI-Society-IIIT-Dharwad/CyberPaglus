@@ -105,8 +105,11 @@ def diff_graphs(old_data: dict, new_data: dict) -> dict:
     old_nodes = {n["id"]: n for n in old_data.get("nodes", [])}
     new_nodes = {n["id"]: n for n in new_data.get("nodes", [])}
 
-    old_edges = {(e["source"], e["target"]): e for e in old_data.get("edges", [])}
-    new_edges = {(e["source"], e["target"]): e for e in new_data.get("edges", [])}
+    old_edges_list = old_data.get("edges", old_data.get("links", []))
+    new_edges_list = new_data.get("edges", new_data.get("links", []))
+
+    old_edges = {(e["source"], e["target"]): e for e in old_edges_list}
+    new_edges = {(e["source"], e["target"]): e for e in new_edges_list}
 
     old_node_ids = set(old_nodes.keys())
     new_node_ids = set(new_nodes.keys())
@@ -191,13 +194,13 @@ def _find_new_attack_paths(old_data: dict, new_data: dict) -> list[dict]:
     old_engine = K8sGraphEngine()
     old_engine.load_graph_from_dict({
         "nodes": old_data.get("nodes", []),
-        "edges": old_data.get("edges", []),
+        "edges": old_data.get("edges", old_data.get("links", [])),
     })
 
     new_engine = K8sGraphEngine()
     new_engine.load_graph_from_dict({
         "nodes": new_data.get("nodes", []),
-        "edges": new_data.get("edges", []),
+        "edges": new_data.get("edges", new_data.get("links", [])),
     })
 
     # Find entry points and crown jewels in new graph

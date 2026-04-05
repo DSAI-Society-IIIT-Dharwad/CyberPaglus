@@ -17,6 +17,7 @@ import threading
 import time
 from graph_engine import K8sGraphEngine
 from ingest import ingest_cluster
+import temporal
 
 # ── App Setup ──────────────────────────────────────
 app = FastAPI(
@@ -27,7 +28,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -75,6 +76,9 @@ class ShortestPathRequest(BaseModel):
 
 class RemediateRequest(BaseModel):
     node_id: str
+
+class SaveSnapshotRequest(BaseModel):
+    label: str = ""
 
 
 # ── Endpoints ──────────────────────────────────────
@@ -173,6 +177,32 @@ def ai_remediation(req: RemediateRequest):
 def reset_graph():
     """Reset the graph to its original state."""
     return engine.reset_graph()
+
+
+@app.post("/api/snapshots/save")
+def save_snapshot(req: SaveSnapshotRequest):
+    """Save the current graph state as a snapshot."""
+    graph_data = engine.get_graph_data()
+    filepath = temporal.save_snapshot(graph_data, req.label)
+    return {"message": "Snapshot saved successfully", "filepath": filepath}
+
+
+@app.get("/api/snapshots")
+def list_snapshots():
+    """List all available snapshots."""
+    return {"snapshots": temporal.list_snapshots()}
+
+
+@app.get("/api/snapshots/diff")
+def diff_snapshot(filepath: str):
+    """Compare a given snapshot against the live graph."""
+    old_data = temporal.load_snapshot(filepath)
+    if not old_data:
+        raise HTTPException(status_code=404, detail="Snapshot not found or invalid.")
+    
+    current_data = engine.get_graph_data()
+    diff_result = temporal.diff_graphs(old_data, current_data)
+    return diff_result
 
 
 @app.post("/api/upload")
