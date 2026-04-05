@@ -5,6 +5,7 @@ export interface GraphNode {
   type: string;
   namespace: string;
   risk_level: string;
+  mitre_tactics?: string[];
   metadata: NodeMetadata;
   // Force graph properties
   x?: number;
@@ -58,21 +59,26 @@ export interface GraphEdge {
 }
 
 // ─── Graph Data ───────────────────────────────
+export interface GraphStats {
+  total_nodes: number;
+  total_edges: number;
+  crown_jewels: number;
+  critical_nodes: number;
+  security_score: number; // 0-100
+}
+
 export interface GraphData {
   nodes: GraphNode[];
   links: GraphEdge[];
   metadata: {
+    cluster?: string;
     cluster_name?: string;
-    scan_timestamp?: string;
+    version?: string;
+    timestamp?: string;
     scenario?: string;
     description?: string;
   };
-  stats: {
-    total_nodes: number;
-    total_edges: number;
-    crown_jewels: number;
-    critical_nodes: number;
-  };
+  stats: GraphStats;
 }
 
 // ─── Algorithm Results ────────────────────────
@@ -208,4 +214,42 @@ export interface HighlightState {
   edges: Set<string>;
   path: string[];
   mode: AnalysisMode;
+}
+
+export interface SnapshotMetadata {
+  filename: string;
+  filepath: string;
+  timestamp: string;
+  label: string;
+  node_count: number;
+  edge_count: number;
+}
+
+export interface DiffRiskChange {
+  node_id: string;
+  label: string;
+  old_risk: string;
+  new_risk: string;
+  escalation: boolean;
+}
+
+export interface TemporalDiffResult {
+  has_changes: boolean;
+  has_new_threats: boolean;
+  summary: {
+    nodes_added: number;
+    nodes_removed: number;
+    edges_added: number;
+    edges_removed: number;
+    risk_changes: number;
+    new_attack_paths: number;
+  };
+  added_nodes: GraphNode[];
+  removed_nodes: GraphNode[];
+  added_edges: GraphEdge[];
+  removed_edges: GraphEdge[];
+  risk_changes: DiffRiskChange[];
+  new_attack_paths: TopCriticalPath[];
+  old_timestamp: string;
+  new_timestamp: string;
 }

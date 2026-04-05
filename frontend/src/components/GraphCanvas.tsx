@@ -14,7 +14,22 @@ interface Props {
   hoverHighlight?: { nodes: Set<string>; edges: Set<string> };
   onNodeHover?: (node: GraphNode | null) => void;
   isDark: boolean;
+  showMitre: boolean;
 }
+
+const MITRE_COLORS: Record<string, string> = {
+  'TA0001': '#6366f1', // Initial Access - Indigo
+  'TA0002': '#ec4899', // Execution - Pink
+  'TA0003': '#f43f5e', // Persistence - Rose
+  'TA0004': '#f59e0b', // Privilege Escalation - Amber
+  'TA0006': '#ef4444', // Credential Access - Red
+  'TA0007': '#10b981', // Discovery - Emerald
+  'TA0008': '#8b5cf6', // Lateral Movement - Violet
+  'TA0009': '#06b6d4', // Collection - Cyan
+  'TA0010': '#3b82f6', // Exfiltration - Blue
+  'TA0040': '#94a3b8', // Impact - Slate
+  'TA0042': '#d946ef', // Resource Development - Fuchsia
+};
 
 const RISK_COLORS: Record<string, string> = {
   'crown-jewel': '#eab308',
@@ -27,23 +42,26 @@ const RISK_COLORS: Record<string, string> = {
 };
 
 const NODE_ICONS: Record<string, string> = {
-  internet: '🌐',
-  ingress: '🔀',
-  pod: '📦',
-  service: '🔌',
-  serviceaccount: '👤',
-  rolebinding: '🔗',
-  role: '🛡️',
-  clusterrole: '⚔️',
-  secret: '🔑',
-  database: '🗄️',
-  configmap: '📋',
-  networkpolicy: '🚧',
+  'ExternalActor': '🌐',
+  'Ingress': '🔀',
+  'Pod': '📦',
+  'Service': '🔌',
+  'ServiceAccount': '👤',
+  'RoleBinding': '🔗',
+  'Role': '🛡️',
+  'ClusterRole': '⚔️',
+  'Secret': '🔑',
+  'Database': '🗄️',
+  'ConfigMap': '📋',
+  'NetworkPolicy': '🚧',
+  'Namespace': '📁',
+  'Node': '🖥️',
+  'PersistentVolume': '💾',
 };
 
 export default function GraphCanvas({ 
   nodes, links, highlight, onNodeClick, onLinkClick, 
-  selectedNode, selectedEdge, hoveredNode, hoverHighlight, onNodeHover, isDark 
+  selectedNode, selectedEdge, hoveredNode, hoverHighlight, onNodeHover, isDark, showMitre
 }: Props) {
   const fgRef = useRef<ForceGraphMethods | null>(null);
 
@@ -169,7 +187,7 @@ export default function GraphCanvas({
     }
 
     // Label
-    if (globalScale > 1.2) {
+    if (globalScale > 0.4) {
       ctx.font = `${Math.max(10 / globalScale, 3)}px Inter, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
@@ -178,8 +196,33 @@ export default function GraphCanvas({
         ? (isDark ? '#f1f5f9' : '#1e293b')
         : (isDark ? 'rgba(71,85,105,0.4)' : 'rgba(148,163,184,0.4)');
       ctx.fillText(node.label || id, x, y + size + 5);
+
+      // MITRE Badges
+      if (showMitre && node.mitre_tactics && node.mitre_tactics.length > 0) {
+        const tactics = node.mitre_tactics;
+        const badgeY = y - size - 15;
+        let startX = x - (tactics.length * 20) / 2;
+
+        tactics.forEach((tacticStr: string, i: number) => {
+          const code = tacticStr.split(':')[0].trim();
+          const badgeColor = MITRE_COLORS[code] || '#475569';
+          
+          // Badge background
+          ctx.beginPath();
+          ctx.roundRect(startX + (i * 22), badgeY, 20, 10, 2);
+          ctx.fillStyle = badgeColor;
+          ctx.fill();
+
+          // Badge text
+          ctx.font = 'bold 6px Inter, sans-serif';
+          ctx.fillStyle = '#fff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(code.substring(2), startX + (i * 22) + 10, badgeY + 5);
+        });
+      }
     }
-  }, [highlight, hoveredNode, hoverHighlight, isDark, isSelected]);
+  }, [highlight, hoveredNode, hoverHighlight, isDark, isSelected, showMitre]);
 
   // Link Painting Logic
   const paintLink = useCallback((link: any, ctx: CanvasRenderingContext2D) => {
@@ -197,20 +240,28 @@ export default function GraphCanvas({
     const isFaded = (highlight?.edges && highlight.edges.size > 0 && !isAnalysis) || 
                     (hoveredNode && !isHover);
 
-    let color = isDark ? 'rgba(34, 211, 238, 0.4)' : 'rgba(2, 132, 199, 0.4)'; // bright cyan/blue
-    let width = 1.5;
+    let color = isDark ? 'rgba(34, 211, 238, 0.8)' : 'rgba(2, 132, 199, 0.8)'; // Solid cyan/blue
+    let width = 2.0;
 
-    if (isAnalysis) { color = '#ef4444'; width = 3.5; }
-    else if (isHover) { color = '#a855f7'; width = 2.5; } // distinct hover color
-    else if (isFaded) { color = isDark ? 'rgba(30,41,59,0.1)' : 'rgba(203,213,225,0.2)'; }
+    if (isAnalysis) { color = '#ef4444'; width = 4.0; }
+    else if (isHover) { color = '#a855f7'; width = 3.0; } // distinct hover color
+    else if (isFaded) { color = isDark ? 'rgba(30,41,59,0.15)' : 'rgba(203,213,225,0.3)'; }
 
     ctx.beginPath();
     ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
     
-    // Always give edges a subtle neon glow
+    // Restore the organic curves lost during the branch merge
+    const tension = 0.2; 
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const cx = start.x + dx/2 - dy * tension;
+    const cy = start.y + dy/2 + dx * tension;
+    
+    ctx.quadraticCurveTo(cx, cy, end.x, end.y);
+    
+    // Stronger neon glow
     ctx.shadowColor = color;
-    ctx.shadowBlur = isAnalysis ? 12 : (isHover ? 8 : 4);
+    ctx.shadowBlur = isAnalysis ? 15 : (isHover ? 12 : 6);
     
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
@@ -231,6 +282,22 @@ export default function GraphCanvas({
           ctx.arc(node.x ?? 0, node.y ?? 0, size + 6, 0, 2 * Math.PI);
           ctx.fillStyle = color;
           ctx.fill();
+        }}
+        linkPointerAreaPaint={(link: any, color: string, ctx: CanvasRenderingContext2D) => {
+          const start = link.source;
+          const end = link.target;
+          if (!start?.x || !end?.x) return;
+          const tension = 0.2; 
+          const dx = end.x - start.x;
+          const dy = end.y - start.y;
+          const cx = start.x + dx/2 - dy * tension;
+          const cy = start.y + dy/2 + dx * tension;
+          ctx.beginPath();
+          ctx.moveTo(start.x, start.y);
+          ctx.quadraticCurveTo(cx, cy, end.x, end.y);
+          ctx.lineWidth = 12;
+          ctx.strokeStyle = color;
+          ctx.stroke();
         }}
         onNodeHover={(node: any) => onNodeHover?.(node)}
         onNodeClick={(node: any) => onNodeClick(node)}

@@ -8,6 +8,7 @@ import GraphCanvas from './components/GraphCanvas';
 import SecuritySidebar from './components/SecuritySidebar';
 import ControlPanel from './components/ControlPanel';
 import KillChainReport from './components/KillChainReport';
+import TemporalDashboard from './components/TemporalDashboard';
 import { api } from './lib/api';
 import type {
   GraphNode, GraphEdge, GraphData, HighlightState,
@@ -48,6 +49,8 @@ function App() {
     nodes: new Set(), edges: new Set(),
   });
   const [showKillChain, setShowKillChain] = useState(false);
+  const [showTemporal, setShowTemporal] = useState(false);
+  const [showMitre, setShowMitre] = useState(false);
 
   // ── Analysis Results ─────────────────────
   const [blastResult, setBlastResult] = useState<BlastRadiusResult | null>(null);
@@ -441,11 +444,39 @@ function App() {
 
         {/* Center - Stats */}
         {graphData && (
-          <div className="hidden md:flex items-center gap-6">
+          <div className="hidden md:flex items-center gap-8">
+            {/* Security Score Gauge */}
+            <div className="flex items-center gap-3 px-4 py-1.5 rounded-2xl bg-slate-800/40 border border-slate-700/50 shadow-inner">
+               <div className="relative w-8 h-8 flex items-center justify-center">
+                 <svg className="w-8 h-8 -rotate-90">
+                    <circle
+                      cx="16" cy="16" r="14"
+                      stroke="currentColor" strokeWidth="3" fill="transparent"
+                      className="text-slate-700"
+                    />
+                    <motion.circle
+                      cx="16" cy="16" r="14"
+                      stroke="currentColor" strokeWidth="3" fill="transparent"
+                      strokeDasharray={88}
+                      initial={{ strokeDashoffset: 88 }}
+                      animate={{ strokeDashoffset: 88 - (88 * (graphData.stats.security_score || 0)) / 100 }}
+                      className={graphData.stats.security_score > 80 ? 'text-emerald-500' : graphData.stats.security_score > 50 ? 'text-amber-500' : 'text-red-500'}
+                    />
+                  </svg>
+                  <span className="absolute text-[9px] font-bold">{graphData.stats.security_score}%</span>
+               </div>
+               <div>
+                  <p className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Security Health</p>
+                  <p className={`text-[11px] font-medium ${graphData.stats.security_score > 80 ? 'text-emerald-400' : graphData.stats.security_score > 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                    {graphData.stats.security_score > 80 ? 'Optimized' : graphData.stats.security_score > 50 ? 'At Risk' : 'Critical'}
+                  </p>
+               </div>
+            </div>
+
             <div className="flex items-center gap-2 px-2 py-1 rounded-lg">
               <Server className={`w-3.5 h-3.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
               <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                {graphData.stats.total_nodes} Nodes
+                {graphData.stats.total_nodes} nodes
               </span>
             </div>
             <div className="flex items-center gap-2 px-2 py-1 rounded-lg">
@@ -601,6 +632,9 @@ function App() {
               onReset={handleReset}
               onUpload={handleUpload}
               onShowKillChain={() => setShowKillChain(true)}
+              onShowTemporal={() => setShowTemporal(true)}
+              onToggleMitre={() => setShowMitre(!showMitre)}
+              showMitre={showMitre}
               criticalNodeResult={criticalResult}
               topCriticalResult={topCriticalResult}
               cycleResult={cycleResult}
@@ -714,6 +748,7 @@ function App() {
             hoverHighlight={hoverHighlight}
             onNodeHover={handleNodeHover}
             isDark={isDark}
+            showMitre={showMitre}
           />
 
           {/* Security Sidebar (overlays right side of graph) */}
@@ -728,6 +763,7 @@ function App() {
             }}
             onBlastRadius={(nodeId) => handleBlastRadius(nodeId, 3)}
             onFindPath={handleFindPathToNode}
+            onRemediate={handleRemediate}
             isDark={isDark}
           />
         </div>
@@ -738,6 +774,13 @@ function App() {
         result={pathResult}
         isOpen={showKillChain}
         onClose={() => setShowKillChain(false)}
+        isDark={isDark}
+      />
+
+      {/* ─── Temporal Dashboard Modal ───────── */}
+      <TemporalDashboard
+        isOpen={showTemporal}
+        onClose={() => setShowTemporal(false)}
         isDark={isDark}
       />
     </div>

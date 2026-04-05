@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Crosshair, Route, RefreshCcw, AlertTriangle, Search, Trash2,
   Upload, Zap, RotateCcw, ChevronDown, ChevronUp, Loader2, Shield,
-  TrendingUp, Target, Info
+  TrendingUp, Target, Info, Clock
 } from 'lucide-react';
 import type { GraphNode, CriticalNodeResult, TopCriticalPathResult, TopCriticalPath, CycleResult, BlastRadiusResult, ShortestPathResult } from '@/lib/types';
 
@@ -19,6 +19,9 @@ interface Props {
   onReset: () => void;
   onUpload: (file: File) => void;
   onShowKillChain: () => void;
+  onShowTemporal: () => void;
+  onToggleMitre: () => void;
+  showMitre: boolean;
   criticalNodeResult: CriticalNodeResult | null;
   topCriticalResult: TopCriticalPathResult | null;
   cycleResult: CycleResult | null;
@@ -31,7 +34,7 @@ interface Props {
 
 export default function ControlPanel({
   nodes, onBlastRadius, onShortestPath, onDetectCycles, onCriticalNode,
-  onTopCriticalPaths, onSelectCriticalPath, onRemediate, onReset, onUpload, onShowKillChain,
+  onTopCriticalPaths, onSelectCriticalPath, onRemediate, onReset, onUpload, onShowKillChain, onShowTemporal, onToggleMitre, showMitre,
   criticalNodeResult, topCriticalResult, cycleResult, blastResult, pathResult,
   loading, isDark, selectedNode
 }: Props) {
@@ -139,6 +142,13 @@ export default function ControlPanel({
             <Upload className="w-3.5 h-3.5" />
           </button>
           <button
+            onClick={onShowTemporal}
+            className={`p-2 rounded-lg text-xs transition-colors flex items-center gap-1.5 ${isDark ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
+            title="Temporal Analysis (Time-Travel)"
+          >
+            <Clock className="w-3.5 h-3.5" />
+          </button>
+          <button
             onClick={onReset}
             className={`p-2 rounded-lg text-xs transition-colors ${isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}
             title="Reset Graph"
@@ -157,6 +167,26 @@ export default function ControlPanel({
             e.target.value = '';
           }}
         />
+      </div>
+
+      {/* 0. Settings / MITRE Toggle */}
+      <div className={sectionClass + " border-indigo-500/30 bg-indigo-500/5"}>
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-indigo-400" />
+            <span className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>MITRE ATT&CK Context</span>
+          </div>
+          <button
+            onClick={onToggleMitre}
+            className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none 
+              ${showMitre ? 'bg-indigo-600' : 'bg-slate-700'}`}
+          >
+            <span
+              className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform 
+                ${showMitre ? 'translate-x-5.5' : 'translate-x-1'}`}
+            />
+          </button>
+        </div>
       </div>
 
       {/* 1. Blast Radius */}

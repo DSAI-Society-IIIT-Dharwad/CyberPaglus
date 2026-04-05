@@ -1,6 +1,5 @@
 import os
 import json
-from google import genai
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -9,7 +8,13 @@ load_dotenv()
 def get_remediation_advice(node_data: dict, edges_data: list) -> str:
     """
     Calls Google Gemini to provide Kubernetes remediation advice based on context.
+    Handles missing dependencies and API keys gracefully.
     """
+    try:
+        from google import genai
+    except ImportError:
+        return "⚠️ **AI Advisor is in Offline Mode.**\n\nThe `google-generativeai` library is not installed. To enable AI features, run:\n`pip install google-generativeai`"
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return "⚠️ **GEMINI_API_KEY is not set.**\n\nPlease add a `.env` file in the `backend` directory with your API key:\n`GEMINI_API_KEY=your_key_here`\n\nYou can get a free key from [Google AI Studio](https://aistudio.google.com/app/apikey)."
@@ -24,12 +29,14 @@ def get_remediation_advice(node_data: dict, edges_data: list) -> str:
         IMPORTANT RULES:
         1. Keep it EXTREMELY concise. Use ultra-short, punchy bullet points. No paragraphs or fluff.
         2. Provide safe, actionable remediation (e.g., strict RBAC, patching CVEs, Network Policies). DO NOT suggest destructive actions like deleting core nodes.
-        3. Format exactly like this:
+        4. Format exactly like this:
            **Risk Summary:** [1-sentence summary]
            **Remediation:**
            - [Short Action 1]
            - [Short Action 2]
-        4. State exactly what to do using specific CVE numbers or labels present in the context.
+           **CLI Fix:**
+           `kubectl [command to remediate]`
+        5. State exactly what to do using specific CVE numbers or labels present in the context.
 
         CONTEXT:
         Target Node Data:

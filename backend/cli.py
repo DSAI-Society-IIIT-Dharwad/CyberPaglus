@@ -27,6 +27,57 @@ from temporal import (
     diff_graphs, format_diff_report,
 )
 
+# ── Unicode Compatibility Fallback ──────────────────────────────
+# Forces UTF-8 encoding for console output to prevent Windows crashes
+# This is placed at the top to protect all subsequent operations.
+if sys.stdout.encoding != 'utf-8':
+    try:
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
+# ── Unicode Compatibility Helper ──────────────────────────────
+
+def safe_print(text: str, file=sys.stdout):
+    """
+    Print text safely by handling UnicodeEncodeError on restricted terminals.
+    Uses ASCII fallbacks for common decorative characters.
+    """
+    # Character mapping for common decorative symbols
+    fallbacks = {
+        "\u2550": "=",  # ═
+        "\u2014": "--", # —
+        "\u26a0": "[!]", # ⚠
+        "\u2713": "[OK]", # ✓
+        "\u2192": "->",  # →
+        "\u2605": "[*]", # ★
+        "\u2588": "#",   # █
+        "\u2500": "-",   # ─
+    }
+
+    try:
+        # Try printing directly first
+        print(text, file=file)
+    except UnicodeEncodeError:
+        # If encoding fails, apply fallbacks
+        safe_text = text
+        for char, fallback in fallbacks.items():
+            safe_text = safe_text.replace(char, fallback)
+        
+        # Final attempt with 'backslashreplace' just in case
+        try:
+            print(safe_text, file=file)
+        except UnicodeEncodeError:
+            print(text.encode(sys.stdout.encoding, errors='replace').decode(sys.stdout.encoding), file=file)
+
+# Reconfigure stdout to UTF-8 if supported (Python 3.7+)
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 
 # ── Severity helpers ──────────────────────────────────────────
 
@@ -77,26 +128,26 @@ def _print_full_report(engine: K8sGraphEngine, hops: int = 3):
     bar = "\u2550" * 66  # ═
 
     # ── Header ────────────────────────────────────────────────
-    print(bar)
-    print(f"  KILL CHAIN REPORT  \u2014  {now}")
-    print(f"  Cluster : {cluster_name}")
-    print(f"  Nodes   : {n_nodes}  |  Edges: {n_edges}")
-    print(bar)
-    print()
+    safe_print(bar)
+    safe_print(f"  KILL CHAIN REPORT  \u2014  {now}")
+    safe_print(f"  Cluster : {cluster_name}")
+    safe_print(f"  Nodes   : {n_nodes}  |  Edges: {n_edges}")
+    safe_print(bar)
+    safe_print("")
 
     # ══════════════════════════════════════════════════════════
     # SECTION 1 — ATTACK PATH DETECTION (Dijkstra)
     # ══════════════════════════════════════════════════════════
     all_paths = engine.find_all_attack_paths()
 
-    print("[ SECTION 1 \u2014 ATTACK PATH DETECTION (Dijkstra) ]")
-    print(f"  \u26a0  {len(all_paths)} attack path(s) detected")
-    print()
+    safe_print("[ SECTION 1 \u2014 ATTACK PATH DETECTION (Dijkstra) ]")
+    safe_print(f"  \u26a0  {len(all_paths)} attack path(s) detected")
+    safe_print("")
 
     for idx, ap in enumerate(all_paths, 1):
         severity = _severity_label(ap["cost"])
-        print(f"  Path #{idx}  |  {ap['hops']} hops  |  Risk Score: {ap['cost']}  [{severity}]")
-        print(f"  {'─' * 60}")
+        safe_print(f"  Path #{idx}  |  {ap['hops']} hops  |  Risk Score: {ap['cost']}  [{severity}]")
+        safe_print(f"  {'-' * 60}")
 
         for edge in ap["path_edges"]:
             src_name = edge["source_name"]
@@ -110,15 +161,15 @@ def _print_full_report(engine: K8sGraphEngine, hops: int = 3):
             line = f"  {src_name} ({src_type})  --[{rel}]-->  {tgt_name} ({tgt_type})"
             if cve:
                 line += f"  [{cve}, CVSS {cvss}]"
-            print(line)
+            safe_print(line)
 
-        print()
+        safe_print("")
 
     # ══════════════════════════════════════════════════════════
     # SECTION 2 — BLAST RADIUS ANALYSIS (BFS)
     # ══════════════════════════════════════════════════════════
-    print(f"[ SECTION 2 \u2014 BLAST RADIUS ANALYSIS (BFS, depth={hops}) ]")
-    print()
+    safe_print(f"[ SECTION 2 \u2014 BLAST RADIUS ANALYSIS (BFS, depth={hops}) ]")
+    safe_print("")
 
     sources = engine._get_sources()
     total_blast_nodes = 0
@@ -129,73 +180,73 @@ def _print_full_report(engine: K8sGraphEngine, hops: int = 3):
         total = result["total_affected"]
         total_blast_nodes += total
 
-        print(f"  Source: {label}  \u2192  {total} reachable resource(s) within {hops} hops")
+        safe_print(f"  Source: {label}  \u2192  {total} reachable resource(s) within {hops} hops")
 
         layers = result.get("hop_layers", {})
         for hop_num in sorted(layers.keys()):
             names = [n.get("label", n["id"]) for n in layers[hop_num]]
-            print(f"    Hop {hop_num}: {', '.join(names)}")
+            safe_print(f"    Hop {hop_num}: {', '.join(names)}")
 
-        print()
+        safe_print("")
 
     # ══════════════════════════════════════════════════════════
     # SECTION 3 — CIRCULAR PERMISSION DETECTION (DFS)
     # ══════════════════════════════════════════════════════════
     cycle_result = engine.dfs_cycle_detection()
 
-    print("[ SECTION 3 \u2014 CIRCULAR PERMISSION DETECTION (DFS) ]")
+    safe_print("[ SECTION 3 \u2014 CIRCULAR PERMISSION DETECTION (DFS) ]")
     if cycle_result["has_cycles"]:
-        print(f"  \u26a0  {cycle_result['total_cycles']} cycle(s) detected")
-        print()
+        safe_print(f"  \u26a0  {cycle_result['total_cycles']} cycle(s) detected")
+        safe_print("")
         for i, cycle in enumerate(cycle_result["cycles"], 1):
-            print(f"  Cycle #{i}: {cycle['description']}")
+            safe_print(f"  Cycle #{i}: {cycle['description']}")
     else:
-        print("  \u2713 No circular permission loops detected.")
-    print()
+        safe_print("  \u2713 No circular permission loops detected.")
+    safe_print("")
 
     # ══════════════════════════════════════════════════════════
     # SECTION 4 — CRITICAL NODE ANALYSIS
     # ══════════════════════════════════════════════════════════
-    print("[ SECTION 4 \u2014 CRITICAL NODE ANALYSIS ]")
-    print("  Computing... (removing each node and recounting paths)")
-    print()
+    safe_print("[ SECTION 4 \u2014 CRITICAL NODE ANALYSIS ]")
+    safe_print("  Computing... (removing each node and recounting paths)")
+    safe_print("")
 
     critical_result = engine.critical_node_analysis()
     baseline = critical_result.get("baseline_paths", 0)
-    print(f"  Baseline attack paths : {baseline}")
-    print()
+    safe_print(f"  Baseline attack paths : {baseline}")
+    safe_print("")
 
     cn = critical_result.get("critical_node")
     if cn:
-        print(f"  \u2605  RECOMMENDATION:")
-        print(f"     Remove permission binding '{cn['label']}' ({cn['type']}) "
+        safe_print(f"  \u2605  RECOMMENDATION:")
+        safe_print(f"     Remove permission binding '{cn['label']}' ({cn['type']}) "
               f"to eliminate {cn['paths_broken']} of {baseline} attack paths.")
-        print()
+        safe_print("")
 
         top5 = critical_result.get("top_5_nodes", [])
         if top5:
             max_broken = top5[0]["paths_broken"] if top5 else 1
-            print("  Top 5 highest-impact nodes to remove:")
+            safe_print("  Top 5 highest-impact nodes to remove:")
             for node in top5:
                 name_padded = f"{node['label']:<30}"
                 type_padded = f"({node['type']:<15})"
                 bar_len = int(node["paths_broken"] / max_broken * 20) if max_broken > 0 else 0
                 bar_str = "\u2588" * bar_len
-                print(f"    {name_padded} {type_padded}  -{node['paths_broken']} paths  {bar_str}")
-        print()
+                safe_print(f"    {name_padded} {type_padded}  -{node['paths_broken']} paths  {bar_str}")
+        safe_print("")
 
     # ══════════════════════════════════════════════════════════
     # SUMMARY
     # ══════════════════════════════════════════════════════════
     critical_label = cn["label"] if cn else "none"
-    print(bar)
-    print("  SUMMARY")
-    print(f"  Attack paths found   : {len(all_paths)}")
-    print(f"  Circular permissions : {cycle_result['total_cycles']}")
-    print(f"  Total blast-radius nodes exposed : {total_blast_nodes}")
-    print(f"  Critical node to remove : {critical_label}")
-    print(bar)
-    print()
+    safe_print(bar)
+    safe_print("  SUMMARY")
+    safe_print(f"  Attack paths found   : {len(all_paths)}")
+    safe_print(f"  Circular permissions : {cycle_result['total_cycles']}")
+    safe_print(f"  Total blast-radius nodes exposed : {total_blast_nodes}")
+    safe_print(f"  Critical node to remove : {critical_label}")
+    safe_print(bar)
+    safe_print("")
 
 
 # ── Individual Algorithm Output ──────────────────────────────
@@ -210,15 +261,15 @@ def _print_blast_radius(engine: K8sGraphEngine, result: dict):
     total = result["total_affected"]
     hops = result["max_hops"]
 
-    print(f"\nBlast Radius Analysis")
-    print(f"{'─' * 50}")
-    print(f"  Source: {label}  →  {total} reachable resource(s) within {hops} hops")
+    safe_print(f"\nBlast Radius Analysis")
+    safe_print(f"{'─' * 50}")
+    safe_print(f"  Source: {label}  \u2192  {total} reachable resource(s) within {hops} hops")
 
     layers = result.get("hop_layers", {})
     for hop_num in sorted(layers.keys()):
         names = [n.get("label", n["id"]) for n in layers[hop_num]]
-        print(f"    Hop {hop_num}: {', '.join(names)}")
-    print()
+        safe_print(f"    Hop {hop_num}: {', '.join(names)}")
+    safe_print("")
 
 
 def _print_shortest_path(result: dict):

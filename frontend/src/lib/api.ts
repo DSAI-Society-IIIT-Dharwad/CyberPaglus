@@ -79,4 +79,18 @@ export const api = {
     }
     return res.json() as Promise<{ message: string; graph: GraphData }>;
   },
+
+  // ─── Temporal Analysis ────────────────────────
+
+  saveSnapshot: (label: string = '') =>
+    fetchJSON<{ message: string; filepath: string }>('/snapshots/save', {
+      method: 'POST',
+      body: JSON.stringify({ label }),
+    }),
+
+  listSnapshots: () =>
+    fetchJSON<{ snapshots: import('./types').SnapshotMetadata[] }>('/snapshots'),
+
+  diffSnapshot: (filepath: string) =>
+    fetchJSON<import('./types').TemporalDiffResult>(`/snapshots/diff?filepath=${encodeURIComponent(filepath)}`),
 };

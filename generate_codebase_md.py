@@ -4,7 +4,7 @@ import fnmatch
 def generate_markdown(root_dir, output_file):
     # Directories and files to ignore
     ignore_dirs = ['.git', '.venv', 'node_modules', '__pycache__', 'dist', 'build', '.next', '.idea', '.vscode']
-    ignore_files = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '*.pyc', '*.pyo', '*.png', '*.jpg', '*.jpeg', '*.gif', '*.ico', '*.webp', '*.svg', 'generate_codebase_md.py']
+    ignore_files = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '*.pyc', '*.pyo', '*.png', '*.jpg', '*.jpeg', '*.gif', '*.ico', '*.webp', '*.svg', 'generate_codebase_md.py', 'CODEBASE.md']
     
     with open(output_file, 'w', encoding='utf-8') as md_file:
         md_file.write("# Full Codebase\n\n")

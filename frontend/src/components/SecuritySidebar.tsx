@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, AlertTriangle, Database, Key, Server, Globe, Link2, User,
   Cpu, Activity, HardDrive, FileText, ShieldOff, ShieldAlert, Network, Monitor,
-  X, Crosshair, Route, ChevronRight, Zap, Lightbulb, Loader2
+  X, Crosshair, Route, ChevronRight, Zap, Lightbulb, Loader2, Clipboard, Check
 } from 'lucide-react';
 import type { GraphNode, GraphEdge, TopCriticalPath } from '@/lib/types';
 
@@ -15,6 +15,7 @@ interface Props {
   onClose: () => void;
   onBlastRadius: (nodeId: string) => void;
   onFindPath: (target: string) => void;
+  onRemediate: (nodeId: string) => void;
   isDark: boolean;
 }
 
@@ -47,9 +48,17 @@ const RISK_BADGE: Record<string, { bg: string; text: string; label: string; glow
   'info': { bg: 'bg-slate-500/20', text: 'text-slate-400', label: 'ℹ️ Info' },
 };
 
-export default function SecuritySidebar({ node, edge, criticalPath, onClose, onBlastRadius, onFindPath, isDark }: Props) {
+export default function SecuritySidebar({ node, edge, criticalPath, onClose, onBlastRadius, onFindPath, onRemediate, isDark }: Props) {
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
+
+  useEffect(() => {
+    if (copied) {
+      const timer = setTimeout(() => setCopied(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [copied]);
 
   const handleAskAI = async (nodeId: string) => {
     if (isAiLoading) return;
@@ -500,6 +509,18 @@ export default function SecuritySidebar({ node, edge, criticalPath, onClose, onB
                 </span>
                 <ChevronRight className="w-4 h-4" />
               </button>
+              <button
+                onClick={() => onRemediate(node.id)}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all
+                  bg-gradient-to-r from-emerald-600 to-green-600 text-white hover:from-emerald-500 hover:to-green-500
+                  hover:shadow-lg hover:shadow-emerald-500/20 active:scale-[0.98]`}
+              >
+                <span className="flex items-center gap-2">
+                  <Shield className="w-4 h-4" />
+                  Remediate & Patch Node
+                </span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
 
             {/* AI Suggestion Box */}
@@ -529,6 +550,30 @@ export default function SecuritySidebar({ node, edge, criticalPath, onClose, onB
                   >
                     <ReactMarkdown>{aiSuggestion}</ReactMarkdown>
                   </div>
+
+                  {/* Copy Fix Button */}
+                  {aiSuggestion.includes('CLI Fix:') && (
+                    <div className="mt-4 pt-3 border-t border-indigo-500/20">
+                      <button
+                        onClick={() => {
+                          // Look for kubectl command in code blocks
+                          const match = aiSuggestion.match(/`kubectl (.*?)`/);
+                          const cmd = match ? `kubectl ${match[1]}` : '';
+                          if (cmd) {
+                            navigator.clipboard.writeText(cmd);
+                            setCopied(true);
+                          }
+                        }}
+                        className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all
+                          ${copied 
+                            ? 'bg-emerald-500 text-white' 
+                            : isDark ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'}`}
+                      >
+                        {copied ? <Check className="w-3.5 h-3.5" /> : <Clipboard className="w-3.5 h-3.5" />}
+                        {copied ? 'Copied to Clipboard!' : 'Copy CLI Fix Command'}
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
