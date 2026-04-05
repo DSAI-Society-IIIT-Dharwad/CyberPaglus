@@ -70,14 +70,14 @@ export default function KillChainReport({ result, isOpen, onClose, isDark }: Pro
           exit={{ y: 40, opacity: 0, scale: 0.95 }}
           transition={{ type: 'spring', damping: 25 }}
           className={`relative z-10 flex flex-col w-full max-w-2xl max-h-[85vh] rounded-2xl shadow-2xl
-            ${isDark ? 'bg-slate-900 border border-slate-700/50' : 'bg-white border border-slate-200'}
-            shadow-black/30`}
+            ${isDark ? 'bg-slate-900/95 border border-slate-700/50' : 'bg-white border border-slate-200'}
+            shadow-black/30 backdrop-blur-xl`}
         >
           {/* Header */}
           <div className={`shrink-0 z-20 flex items-center justify-between px-6 py-4 border-b rounded-t-2xl
             ${isDark ? 'bg-slate-900/95 border-slate-700/50' : 'bg-white/95 border-slate-200'}`}>
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-gradient-to-br from-red-500 to-orange-500">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-red-500 to-orange-500 glow-red">
                 <FileText className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -182,7 +182,8 @@ export default function KillChainReport({ result, isOpen, onClose, isDark }: Pro
                         ${isDark ? 'bg-slate-800/50 border-slate-700/50 hover:bg-slate-800' : 'bg-slate-50 border-slate-200 hover:bg-white'}`}>
                         {/* Step Number */}
                         <div className={`shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br ${gradient}
-                          flex items-center justify-center text-white font-bold text-sm shadow-lg`}>
+                          flex items-center justify-center text-white font-bold text-sm shadow-lg
+                          ${step.risk_level === 'critical' || step.risk_level === 'crown-jewel' ? 'glow-red' : ''}`}>
                           {step.step}
                         </div>
 

@@ -41,6 +41,12 @@
   --color-cyber-purple: hsl(270 80% 60%);
   --color-cyber-cyan: hsl(185 100% 50%);
   --color-cyber-orange: hsl(25 100% 55%);
+
+  /* Neon Glow Tokens */
+  --neon-red: 0 0 10px hsl(0 90% 55% / 0.5), 0 0 20px hsl(0 90% 55% / 0.3);
+  --neon-blue: 0 0 10px hsl(210 100% 60% / 0.5), 0 0 20px hsl(210 100% 60% / 0.3);
+  --neon-cyan: 0 0 10px hsl(185 100% 50% / 0.5), 0 0 20px hsl(185 100% 50% / 0.3);
+  --neon-gold: 0 0 10px hsl(45 100% 50% / 0.5), 0 0 20px hsl(45 100% 50% / 0.3);
 }
 
 .dark {
@@ -136,6 +142,19 @@
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
+@keyframes glitch {
+  0% { transform: translate(0); }
+  20% { transform: translate(-2px, 2px); }
+  40% { transform: translate(-2px, -2px); }
+  60% { transform: translate(2px, 2px); }
+  80% { transform: translate(2px, -2px); }
+  100% { transform: translate(0); }
+}
+
+.animate-glitch {
+  animation: glitch 0.3s cubic-bezier(.25, .46, .45, .94) both infinite;
+}
+
 @keyframes scan-line {
   0% {
     transform: translateY(-100%);
@@ -224,6 +243,19 @@
     linear-gradient(hsl(216 90% 58% / 0.03) 1px, transparent 1px),
     linear-gradient(90deg, hsl(216 90% 58% / 0.03) 1px, transparent 1px);
   background-size: 40px 40px;
+  position: relative;
+  overflow: hidden;
+}
+
+.cyber-grid::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 0%, hsl(222 47% 6% / 0.2) 100%);
+  pointer-events: none;
 }
 
 :where(:not(.dark)) .cyber-grid {
@@ -277,13 +309,16 @@
 
 /* ─── Tooltip ───────────────────────────────── */
 .cyber-tooltip {
-  background: hsl(222 47% 10%);
-  color: hsl(210 40% 98%);
-  border: 1px solid hsl(216 90% 58% / 0.3);
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.75rem;
-  box-shadow: 0 4px 20px hsl(0 0% 0% / 0.3);
+  background: hsla(222, 47%, 10%, 0.85) !important;
+  color: hsl(210, 40% 98%) !important;
+  border: 1px solid hsla(185, 100%, 50%, 0.4) !important;
+  border-radius: 0.75rem !important;
+  padding: 0.75rem 1rem !important;
+  font-size: 0.85rem !important;
+  box-shadow: 0 0 20px hsla(185, 100%, 50%, 0.15), 0 8px 32px hsla(0, 0%, 0%, 0.5) !important;
+  backdrop-filter: blur(8px) !important;
+  pointer-events: none !important;
+  min-width: 180px;
 }
 
 /* ─── Loading skeleton ──────────────────────── */

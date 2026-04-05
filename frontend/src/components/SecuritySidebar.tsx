@@ -35,13 +35,13 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   'file-text': <FileText className="w-5 h-5" />,
 };
 
-const RISK_BADGE: Record<string, { bg: string; text: string; label: string }> = {
-  'crown-jewel': { bg: 'bg-yellow-500/20', text: 'text-yellow-400', label: '👑 Crown Jewel' },
-  'critical': { bg: 'bg-red-500/20', text: 'text-red-400', label: '🔴 Critical' },
+const RISK_BADGE: Record<string, { bg: string; text: string; label: string; glow?: string }> = {
+  'crown-jewel': { bg: 'bg-yellow-500/20', text: 'text-yellow-400', label: '👑 Crown Jewel', glow: 'glow-gold' },
+  'critical': { bg: 'bg-red-500/20', text: 'text-red-400', label: '🔴 Critical', glow: 'glow-red' },
   'high': { bg: 'bg-orange-500/20', text: 'text-orange-400', label: '🟠 High' },
   'medium': { bg: 'bg-amber-500/20', text: 'text-amber-400', label: '🟡 Medium' },
   'low': { bg: 'bg-green-500/20', text: 'text-green-400', label: '🟢 Low' },
-  'entry-point': { bg: 'bg-green-500/20', text: 'text-green-400', label: '🌐 Entry Point' },
+  'entry-point': { bg: 'bg-green-500/20', text: 'text-green-400', label: '🌐 Entry Point', glow: 'glow-green' },
   'info': { bg: 'bg-slate-500/20', text: 'text-slate-400', label: 'ℹ️ Info' },
 };
 
@@ -249,7 +249,7 @@ export default function SecuritySidebar({ node, edge, criticalPath, onClose, onB
 
           <div className="px-5 py-4 space-y-5">
             {/* Risk Badge */}
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className={`inline-flex px-3 py-1.5 rounded-full text-xs font-medium ${risk.bg} ${risk.text}`}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className={`inline-flex px-3 py-1.5 rounded-full text-xs font-medium ${risk.bg} ${risk.text} ${risk.glow || ''}`}>
               {risk.label}
             </motion.div>
 

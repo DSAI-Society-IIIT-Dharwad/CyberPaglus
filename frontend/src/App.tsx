@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shield, Moon, Sun, AlertTriangle, Activity, Database, Server,
@@ -42,6 +42,10 @@ function App() {
   const [selectedCriticalPath, setSelectedCriticalPath] = useState<TopCriticalPath | null>(null);
   const [highlight, setHighlight] = useState<HighlightState>({
     nodes: new Set(), edges: new Set(), path: [], mode: 'none',
+  });
+  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
+  const [hoverHighlight, setHoverHighlight] = useState<{ nodes: Set<string>; edges: Set<string> }>({
+    nodes: new Set(), edges: new Set(),
   });
   const [showKillChain, setShowKillChain] = useState(false);
 
@@ -100,6 +104,8 @@ function App() {
   // ── Clear Highlights ─────────────────────
   const clearHighlight = () => {
     setHighlight({ nodes: new Set(), edges: new Set(), path: [], mode: 'none' });
+    setHoveredNode(null);
+    setHoverHighlight({ nodes: new Set(), edges: new Set() });
     setBlastResult(null);
     setPathResult(null);
     setCycleResult(null);
@@ -108,6 +114,50 @@ function App() {
     setTopCriticalResult(null);
     setSelectedCriticalPath(null);
   };
+
+  // ── Hover Insights ──────────────────────
+  const adjacencyList = useMemo(() => {
+    const list: Record<string, string[]> = {};
+    links.forEach(l => {
+      const s = typeof l.source === 'string' ? l.source : (l.source as any).id;
+      const t = typeof l.target === 'string' ? l.target : (l.target as any).id;
+      if (!list[s]) list[s] = [];
+      list[s].push(t);
+    });
+    return list;
+  }, [links]);
+
+  const handleNodeHover = useCallback((node: GraphNode | null) => {
+    setHoveredNode((prev) => {
+      const prevId = prev?.id;
+      const nextId = node?.id;
+      
+      if (prevId === nextId) return prev;
+      
+      // Node changed, update highlights
+      if (!node) {
+        setHoverHighlight({ nodes: new Set(), edges: new Set() });
+      } else {
+        const reachableNodes = new Set([node.id]);
+        const reachableEdges = new Set<string>();
+        const queue = [node.id];
+        
+        while (queue.length > 0) {
+          const curr = queue.shift()!;
+          const neighbors = adjacencyList[curr] || [];
+          neighbors.forEach((next: string) => {
+            if (!reachableNodes.has(next)) {
+              reachableNodes.add(next);
+              reachableEdges.add(`${curr}->${next}`);
+              queue.push(next);
+            }
+          });
+        }
+        setHoverHighlight({ nodes: reachableNodes, edges: reachableEdges });
+      }
+      return node;
+    });
+  }, [adjacencyList]);
 
   // ── Algorithm Handlers ───────────────────
   const handleBlastRadius = async (source: string, hops: number) => {
@@ -368,7 +418,6 @@ function App() {
 
   return (
     <div className={`min-h-screen flex flex-col ${isDark ? 'bg-[#0a0f1e]' : 'bg-slate-50'}`}>
-
       {/* ─── Header ─────────────────────────── */}
       <header className={`shrink-0 flex items-center justify-between px-5 py-3 border-b z-40
         ${isDark ? 'bg-slate-900/80 border-slate-700/50' : 'bg-white/80 border-slate-200'}
@@ -658,9 +707,12 @@ function App() {
             links={links}
             highlight={highlight}
             onNodeClick={handleNodeClick}
-            onLinkClick={handleLinkClick}
+            onLinkClick={setSelectedEdge}
             selectedNode={selectedNode}
             selectedEdge={selectedEdge}
+            hoveredNode={hoveredNode}
+            hoverHighlight={hoverHighlight}
+            onNodeHover={handleNodeHover}
             isDark={isDark}
           />
 
