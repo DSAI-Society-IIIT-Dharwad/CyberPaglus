@@ -201,7 +201,7 @@ export default function ControlPanel({
                 className="w-full py-2.5 rounded-lg text-sm font-medium transition-all
                   bg-gradient-to-r from-red-600 to-orange-600 text-white
                   hover:from-red-500 hover:to-orange-500 disabled:opacity-40 disabled:cursor-not-allowed
-                  hover:shadow-lg hover:shadow-red-500/20 active:scale-[0.98]"
+                  hover:shadow-lg hover:shadow-red-500/20 active:scale-[0.98] glow-red"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Analyze Blast Radius'}
               </button>
@@ -260,7 +260,7 @@ export default function ControlPanel({
                 className="w-full py-2.5 rounded-lg text-sm font-medium transition-all
                   bg-gradient-to-r from-blue-600 to-cyan-600 text-white
                   hover:from-blue-500 hover:to-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed
-                  hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.98]"
+                  hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.98] glow-blue"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Find Shortest Path'}
               </button>

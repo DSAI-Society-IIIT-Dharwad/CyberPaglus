@@ -10,33 +10,20 @@ interface Props {
   onLinkClick: (link: GraphEdge) => void;
   selectedNode?: GraphNode | null;
   selectedEdge?: GraphEdge | null;
+  hoveredNode?: GraphNode | null;
+  hoverHighlight?: { nodes: Set<string>; edges: Set<string> };
+  onNodeHover?: (node: GraphNode | null) => void;
   isDark: boolean;
 }
 
-const NODE_COLORS: Record<string, string> = {
-  internet: '#22c55e',
-  ingress: '#3b82f6',
-  pod: '#6366f1',
-  service: '#8b5cf6',
-  serviceaccount: '#06b6d4',
-  rolebinding: '#f59e0b',
-  role: '#f59e0b',
-  clusterrole: '#ef4444',
-  secret: '#eab308',
-  database: '#eab308',
-  configmap: '#64748b',
-  networkpolicy: '#64748b',
-  namespace: '#94a3b8',
-};
-
 const RISK_COLORS: Record<string, string> = {
-  'crown-jewel': '#eab308',   // Yellow (Crown Jewel)
-  'critical': '#ef4444',     // Red (Critical Risk)
-  'high': '#f97316',         // Orange
-  'medium': '#f59e0b',       // Amber
-  'low': '#64748b',          // Slate/Grey (Low Risk / Utility)
-  'entry-point': '#22c55e',  // Green (Internet / Entry Point)
-  'info': '#6366f1',         // Indigo (Standard Entity)
+  'crown-jewel': '#eab308',
+  'critical': '#ef4444',
+  'high': '#f97316',
+  'medium': '#f59e0b',
+  'low': '#64748b',
+  'entry-point': '#22c55e',
+  'info': '#6366f1',
 };
 
 const NODE_ICONS: Record<string, string> = {
@@ -54,255 +41,233 @@ const NODE_ICONS: Record<string, string> = {
   networkpolicy: '🚧',
 };
 
-export default function GraphCanvas({ nodes, links, highlight, onNodeClick, onLinkClick, selectedNode, selectedEdge, isDark }: Props) {
+export default function GraphCanvas({ 
+  nodes, links, highlight, onNodeClick, onLinkClick, 
+  selectedNode, selectedEdge, hoveredNode, hoverHighlight, onNodeHover, isDark 
+}: Props) {
   const fgRef = useRef<ForceGraphMethods | null>(null);
 
-  const graphData = useMemo(() => {
-    return {
-      nodes: nodes.map(n => ({ ...n })),
-      links: links.map(l => ({ ...l })),
-    };
-  }, [nodes, links]);
+  // Stable graph data
+  const graphData = useMemo(() => ({
+    nodes: nodes.map(n => ({ ...n })),
+    links: links.map(l => ({ ...l })),
+  }), [nodes.length, links.length]);
 
-  // Tune layout forces
+  // Initial Zoom-to-fit
+  useEffect(() => {
+    if (nodes.length > 0) {
+      setTimeout(() => {
+        fgRef.current?.zoomToFit(600, 80);
+      }, 500);
+    }
+  }, [nodes.length]);
+
+  // Forces tune
   useEffect(() => {
     const fg = fgRef.current;
     if (fg) {
-      // Increase negative charge so nodes repel each other horizontally
-      fg.d3Force('charge')?.strength(-400);
-      // Let the link distances be flexible
-      fg.d3Force('link')?.distance(60);
-      
+      fg.d3Force('charge')?.strength(-500);
+      fg.d3Force('link')?.distance(80);
+      fg.d3Force('center')?.strength(0.1);
       (fg as any).d3ReheatSimulation?.();
     }
   }, [graphData]);
 
-  const getNodeColor = useCallback((node: GraphNode) => {
-    if (highlight.nodes.size > 0) {
-      if (highlight.nodes.has(node.id)) {
-        if (highlight.path.includes(node.id)) {
-          return '#ef4444';
-        }
-        return RISK_COLORS[node.risk_level] || NODE_COLORS[node.type] || '#6366f1';
-      }
-      return isDark ? '#1e293b' : '#cbd5e1';
+  // Helper check for selection
+  const isSelected = useCallback((nodeId: string) => {
+    if (!nodeId) return false;
+    if (selectedNode?.id === nodeId) return true;
+    if (selectedEdge) {
+      const s = typeof selectedEdge.source === 'string' ? selectedEdge.source : (selectedEdge.source as any)?.id;
+      const t = typeof selectedEdge.target === 'string' ? selectedEdge.target : (selectedEdge.target as any)?.id;
+      return (s === nodeId || t === nodeId);
     }
-    return RISK_COLORS[node.risk_level] || NODE_COLORS[node.type] || '#6366f1';
-  }, [highlight, isDark]);
+    return false;
+  }, [selectedNode, selectedEdge]);
 
-  const getNodeSize = useCallback((node: GraphNode) => {
+  // Paint Node Logic
+  const paintNode = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+    if (!node || !ctx) return;
+    const x = node.x ?? 0;
+    const y = node.y ?? 0;
+    const id = node.id;
+    if (!id) return;
+
+    // Dimensions
     const baseSize = node.type === 'internet' ? 10 :
       node.risk_level === 'crown-jewel' ? 9 :
         node.risk_level === 'critical' ? 8 :
           node.type === 'pod' ? 7 : 6;
-
-    if (highlight.nodes.size > 0 && highlight.nodes.has(node.id)) {
-      return baseSize * 1.4;
+    
+    let size = baseSize;
+    if (highlight?.nodes && highlight.nodes.size > 0) {
+      size = highlight.nodes.has(id) ? baseSize * 1.3 : baseSize * 0.6;
     }
-    if (highlight.nodes.size > 0 && !highlight.nodes.has(node.id)) {
-      return baseSize * 0.6;
+
+    const isOnPath = !!(highlight?.path && highlight.path.includes(id));
+    const isHighlighted = !highlight?.nodes || (highlight.nodes.size === 0) || highlight.nodes.has(id);
+    const isHovered = hoveredNode?.id === id;
+    const isHoverReachable = !!(hoverHighlight?.nodes && hoverHighlight.nodes.has(id));
+    const isSelectedNode = isSelected(id);
+
+    let color = RISK_COLORS[node.risk_level] || '#6366f1';
+    if (isOnPath) color = '#ef4444';
+    else if (isHoverReachable) color = '#22d3ee';
+    else if ((highlight?.nodes && highlight.nodes.size > 0 && !isHighlighted) || (hoveredNode && !isHoverReachable && !isHovered)) {
+      color = isDark ? '#1e293b' : '#cbd5e1';
     }
-    return baseSize;
-  }, [highlight]);
 
-  const paintNode = useCallback((node: GraphNode, ctx: CanvasRenderingContext2D, globalScale: number) => {
-    const size = getNodeSize(node);
-    const color = getNodeColor(node);
-    const x = node.x ?? 0;
-    const y = node.y ?? 0;
-    const isHighlighted = highlight.nodes.size === 0 || highlight.nodes.has(node.id);
-    const isOnPath = highlight.path.includes(node.id);
-    const isSelected = selectedNode?.id === node.id;
-    const isLinkSelected = selectedEdge && (
-      (typeof selectedEdge.source === 'string' ? selectedEdge.source : (selectedEdge.source as any).id) === node.id ||
-      (typeof selectedEdge.target === 'string' ? selectedEdge.target : (selectedEdge.target as any).id) === node.id
-    );
-    const isGroupGlow = 
-      (highlight.mode === 'group-critical' && node.risk_level === 'critical') || 
-      (highlight.mode === 'group-crown-jewel' && node.risk_level === 'crown-jewel') ||
-      (highlight.mode === 'group-entry-point' && (node.type === 'internet' || node.risk_level === 'entry-point')) ||
-      (highlight.mode === 'group-standard' && (node.risk_level === 'info' || node.risk_level === 'medium' || node.type === 'pod' || node.type === 'service')) ||
-      (highlight.mode === 'group-low' && node.risk_level === 'low');
-
-    // Draw native-colored glowing halo for selected node or filtered group
-    if (isSelected || isGroupGlow || isLinkSelected) {
+    // Glow Halo (Prioritize Selection/Hover)
+    if (isSelectedNode || isHovered) {
+      const haloColor = isHovered ? '#22d3ee' : (isSelectedNode ? '#ef4444' : color);
       ctx.beginPath();
-      ctx.arc(x, y, size + (isSelected || isGroupGlow ? 6 : 4), 0, 2 * Math.PI);
-      
-      // Use standard transparent base mapping matching the node's true color natively!
-      ctx.globalAlpha = isDark ? (isLinkSelected && !isSelected ? 0.2 : 0.35) : (isLinkSelected && !isSelected ? 0.15 : 0.25);
-      ctx.fillStyle = color;
+      ctx.arc(x, y, size + 8, 0, 2 * Math.PI);
+      ctx.globalAlpha = isDark ? 0.25 : 0.15;
+      ctx.fillStyle = haloColor;
       ctx.fill();
       ctx.globalAlpha = 1.0;
       
-      // Add glowing shadow effect tied to the node's specific color
-      if (isSelected || isGroupGlow) {
-        ctx.shadowColor = color;
-        ctx.shadowBlur = 20;
-      }
-      
-      // Apply exact border
-      ctx.strokeStyle = color;
-      ctx.lineWidth = isSelected ? 2 : 1;
+      ctx.shadowColor = haloColor;
+      ctx.shadowBlur = isHovered ? 30 : 25;
+      ctx.strokeStyle = haloColor;
+      ctx.lineWidth = 3;
       ctx.stroke();
-      
-      // Reset shadow so it doesn't affect other elements
       ctx.shadowBlur = 0;
     }
 
-    // Outer faint glow for generic highlighted nodes
-    if (isHighlighted && (node.risk_level === 'critical' || node.risk_level === 'crown-jewel' || isOnPath)) {
-      const glowSize = size + 4;
-      const gradient = ctx.createRadialGradient(x, y, size * 0.5, x, y, glowSize);
-      gradient.addColorStop(0, color + '60');
-      gradient.addColorStop(1, color + '00');
+    // Secondary Radial Glow for Critical Nodes
+    if ((isHighlighted || isHoverReachable) && (node.risk_level === 'critical' || node.risk_level === 'crown-jewel' || isHoverReachable)) {
+      const glowColor = isHoverReachable ? '#22d3ee' : color;
+      const glowSize = size + (isHoverReachable ? 6 : 4);
+      const grad = ctx.createRadialGradient(x, y, size * 0.4, x, y, glowSize);
+      grad.addColorStop(0, glowColor + '70');
+      grad.addColorStop(1, glowColor + '00');
       ctx.beginPath();
       ctx.arc(x, y, glowSize, 0, 2 * Math.PI);
-      ctx.fillStyle = gradient;
+      ctx.fillStyle = grad;
       ctx.fill();
     }
 
-    // Main node circle
+    // Node Body
     ctx.beginPath();
     ctx.arc(x, y, size, 0, 2 * Math.PI);
-    ctx.fillStyle = isHighlighted ? color : (isDark ? '#1e293b' : '#e2e8f0');
+    ctx.fillStyle = color;
     ctx.fill();
-
-    // Border
-    ctx.strokeStyle = isHighlighted ? color : (isDark ? '#334155' : '#94a3b8');
-    ctx.lineWidth = isOnPath ? 2 : 1;
+    
+    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+    ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Icon (if zoomed in enough)
+    // Icon
     if (globalScale > 0.8) {
       const icon = NODE_ICONS[node.type] || '⚪';
       ctx.font = `${Math.max(size * 0.9, 6)}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      ctx.fillStyle = (node.risk_level === 'crown-jewel' || isOnPath) ? '#fff' : (isDark ? '#fff' : '#000');
       ctx.fillText(icon, x, y);
     }
 
-    // Label (if zoomed in)
+    // Label
     if (globalScale > 1.2) {
-      ctx.font = `${Math.max(11 / globalScale, 3)}px Inter, sans-serif`;
+      ctx.font = `${Math.max(10 / globalScale, 3)}px Inter, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      ctx.fillStyle = isHighlighted
+      const labelVisible = isHighlighted || isHoverReachable || isSelectedNode;
+      ctx.fillStyle = labelVisible
         ? (isDark ? '#f1f5f9' : '#1e293b')
-        : (isDark ? '#475569' : '#94a3b8');
-      ctx.fillText(node.label || node.id, x, y + size + 3);
+        : (isDark ? 'rgba(71,85,105,0.4)' : 'rgba(148,163,184,0.4)');
+      ctx.fillText(node.label || id, x, y + size + 5);
     }
-  }, [getNodeColor, getNodeSize, highlight, isDark, selectedNode, selectedEdge]);
+  }, [highlight, hoveredNode, hoverHighlight, isDark, isSelected]);
 
-  const getLinkColor = useCallback((link: { source: GraphNode | string; target: GraphNode | string }) => {
-    const sourceId = typeof link.source === 'string' ? link.source : (link.source as any).id;
-    const targetId = typeof link.target === 'string' ? link.target : (link.target as any).id;
-    const edgeKey = `${sourceId}->${targetId}`;
+  // Link Painting Logic
+  const paintLink = useCallback((link: any, ctx: CanvasRenderingContext2D) => {
+    if (!link || !ctx) return;
+    const start = link.source;
+    const end = link.target;
+    if (!start?.x || !end?.x) return;
 
-    const isSelected = selectedEdge && (
-      (typeof selectedEdge.source === 'string' ? selectedEdge.source : (selectedEdge.source as any).id) === sourceId &&
-      (typeof selectedEdge.target === 'string' ? selectedEdge.target : (selectedEdge.target as any).id) === targetId
-    );
+    const sId = start.id;
+    const tId = end.id;
+    const key = `${sId}->${tId}`;
 
-    if (isSelected) return '#ef4444';
+    const isAnalysis = !!(highlight?.edges && highlight.edges.has(key));
+    const isHover = !!(hoverHighlight?.edges && hoverHighlight.edges.size > 0 && hoverHighlight.edges.has(key));
+    const isFaded = (highlight?.edges && highlight.edges.size > 0 && !isAnalysis) || 
+                    (hoveredNode && !isHover);
 
-    if (highlight.edges.size > 0 && highlight.edges.has(edgeKey)) {
-      return '#ef4444';
+    let color = isDark ? 'rgba(148,163,184,0.2)' : 'rgba(71,85,105,0.3)';
+    let width = 1.2;
+
+    if (isAnalysis) { color = '#ef4444'; width = 3.5; }
+    else if (isHover) { color = '#22d3ee'; width = 2.5; }
+    else if (isFaded) { color = isDark ? 'rgba(30,41,59,0.05)' : 'rgba(203,213,225,0.1)'; }
+
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    
+    if (isAnalysis || isHover) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = isAnalysis ? 12 : 8;
     }
-    if (highlight.nodes.size > 0) {
-      if (highlight.nodes.has(sourceId) && highlight.nodes.has(targetId)) {
-        return isDark ? 'rgba(99,102,241,0.8)' : 'rgba(99,102,241,0.7)';
-      }
-      return isDark ? 'rgba(15,23,42,0.6)' : 'rgba(203,213,225,0.4)';
-    }
-    // High contrast professional lines (slate-400 equivalent for dark, slate-600 equivalent for light)
-    return isDark ? 'rgba(148,163,184,0.75)' : 'rgba(71,85,105,0.8)';
-  }, [highlight, isDark, selectedEdge]);
-
-  const getLinkWidth = useCallback((link: { source: GraphNode | string; target: GraphNode | string }) => {
-    const sourceId = typeof link.source === 'string' ? link.source : (link.source as any).id;
-    const targetId = typeof link.target === 'string' ? link.target : (link.target as any).id;
-    const edgeKey = `${sourceId}->${targetId}`;
-
-    const isSelected = selectedEdge && (
-      (typeof selectedEdge.source === 'string' ? selectedEdge.source : (selectedEdge.source as any).id) === sourceId &&
-      (typeof selectedEdge.target === 'string' ? selectedEdge.target : (selectedEdge.target as any).id) === targetId
-    );
-
-    if (isSelected) return 4;
-
-    if (highlight.edges.size > 0 && highlight.edges.has(edgeKey)) {
-      return 3;
-    }
-    return 1;
-  }, [highlight, selectedEdge]);
-
-  const handleNodeClick = useCallback((node: GraphNode) => {
-    onNodeClick(node);
-    const fg = fgRef.current;
-    if (fg) {
-      fg.centerAt(node.x, node.y, 600);
-      fg.zoom(2.5, 600);
-    }
-  }, [onNodeClick]);
-
-  const handleLinkClick = useCallback((link: any) => {
-    onLinkClick(link as GraphEdge);
-  }, [onLinkClick]);
+    
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }, [highlight, hoverHighlight, hoveredNode, isDark]);
 
   return (
     <div className="graph-container relative w-full h-full">
       <ForceGraph2D
         ref={fgRef as any}
         graphData={graphData}
-        nodeCanvasObject={paintNode as any}
+        nodeCanvasObject={paintNode}
+        linkCanvasObject={paintLink}
         nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
-          const size = getNodeSize(node);
+          const size = baseSizeForNode(node);
           ctx.beginPath();
-          ctx.arc(node.x ?? 0, node.y ?? 0, size + 2, 0, 2 * Math.PI);
+          ctx.arc(node.x ?? 0, node.y ?? 0, size + 6, 0, 2 * Math.PI);
           ctx.fillStyle = color;
           ctx.fill();
         }}
-        dagMode="td"
-        dagLevelDistance={120}
-        d3VelocityDecay={0.3}
-        linkColor={getLinkColor as any}
-        linkWidth={getLinkWidth as any}
-        linkDirectionalArrowLength={4}
-        linkDirectionalArrowRelPos={0.85}
-        linkDirectionalParticles={(link: any) => {
-          const sourceId = typeof link.source === 'string' ? link.source : (link.source as any).id;
-          const targetId = typeof link.target === 'string' ? link.target : (link.target as any).id;
-          const edgeKey = `${sourceId}->${targetId}`;
-
-          const isSelected = selectedEdge && (
-            (typeof selectedEdge.source === 'string' ? selectedEdge.source : (selectedEdge.source as any).id) === sourceId &&
-            (typeof selectedEdge.target === 'string' ? selectedEdge.target : (selectedEdge.target as any).id) === targetId
-          );
-
-          return (highlight.edges.has(edgeKey) || isSelected) ? 3 : 0;
-        }}
-        linkDirectionalParticleSpeed={0.006}
-        linkDirectionalParticleWidth={3}
-        linkDirectionalParticleColor={() => '#ef4444'}
-        linkCurvature={0.25}
-        onNodeClick={handleNodeClick as any}
-        onLinkClick={handleLinkClick as any}
+        onNodeHover={(node: any) => onNodeHover?.(node)}
+        onNodeClick={(node: any) => onNodeClick(node)}
+        onLinkClick={(link: any) => onLinkClick(link as GraphEdge)}
+        nodeLabel={(node: any) => node ? `
+          <div class="cyber-tooltip">
+            <div class="flex items-center gap-2 mb-1">
+              <span style="color: #22d3ee; font-weight: bold;">${node.label || node.id}</span>
+              <span style="color: #64748b; font-size: 10px; margin-left: 5px;">${node.type?.toUpperCase()}</span>
+            </div>
+            <div style="font-size: 11px; color: #94a3b8;">
+              NS: ${node.namespace} | <span style="color: #ef4444; font-weight: bold;">${node.risk_level?.toUpperCase()}</span>
+            </div>
+          </div>
+        ` : ''}
         backgroundColor={isDark ? '#0a0f1e' : '#f8fafc'}
-        cooldownTicks={100}
-        onEngineStop={() => fgRef.current?.zoomToFit(400, 40)}
+        cooldownTicks={150}
         enableNodeDrag={true}
         enableZoomInteraction={true}
         enablePanInteraction={true}
-        minZoom={0.3}
-        maxZoom={8}
+        minZoom={0.1}
+        maxZoom={10}
       />
-      {/* Zoom hints */}
-      <div className={`absolute bottom-3 right-3 text-xs px-3 py-1.5 rounded-full
-        ${isDark ? 'bg-slate-800/80 text-slate-400' : 'bg-white/80 text-slate-500'} 
-        backdrop-blur-sm border ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
-        Scroll to zoom • Drag to pan • Click nodes
+      <div className={`absolute bottom-4 right-4 text-[10px] px-3 py-1.5 rounded-full
+        ${isDark ? 'bg-slate-900/90 text-slate-500 border-slate-800' : 'bg-white/90 text-slate-400 border-slate-100'} 
+        backdrop-blur-md border shadow-2xl pointer-events-none`}>
+        SHIFT+DRAG to select • SCROLL to zoom • HOVER is automated
       </div>
     </div>
   );
+}
+
+function baseSizeForNode(node: any) {
+  if (!node) return 6;
+  return node.type === 'internet' ? 10 :
+    node.risk_level === 'crown-jewel' ? 9 :
+      node.risk_level === 'critical' ? 8 :
+        node.type === 'pod' ? 7 : 6;
 }
